@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClawBrowser: A Proactive, Memory-Persistent AI Browser</title>
+  <meta name="description" content="ClawBrowser is a lightweight, open-source browser with a deeply integrated AI agent that thinks ahead, remembers everything, and keeps all data local.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 18px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: 'Crimson Text', Georgia, 'Times New Roman', serif;
+      color: #1a1a1a;
+      background: #fafaf8;
+      line-height: 1.82;
+      padding: 0 1.5rem;
+    }
+
+    article {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 6rem 0 8rem;
+    }
+
+    /* ── Title Block ────────────────────── */
+
+    header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    header h1 {
+      font-size: 1.85rem;
+      font-weight: 700;
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+      margin-bottom: 1.6rem;
+    }
+
+    header .authors {
+      font-size: 0.95rem;
+      color: #555;
+      margin-bottom: 0.3rem;
+    }
+
+    header .date {
+      font-size: 0.88rem;
+      color: #888;
+      font-style: italic;
+    }
+
+    /* ── Abstract ───────────────────────── */
+
+    .abstract {
+      margin-bottom: 3.5rem;
+      padding: 0 1.5rem;
+    }
+
+    .abstract h2 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 0.8rem;
+      color: #1a1a1a;
+    }
+
+    .abstract p {
+      font-size: 0.92rem;
+      line-height: 1.75;
+      color: #333;
+    }
+
+    /* ── Sections ───────────────────────── */
+
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 3.5rem 0;
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1.2rem;
+      line-height: 1.35;
+    }
+
+    h2 .section-num {
+      font-weight: 400;
+      color: #999;
+      margin-right: 0.4em;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 0.8rem;
+      line-height: 1.4;
+    }
+
+    h3 .section-num {
+      font-weight: 400;
+      color: #999;
+      margin-right: 0.35em;
+    }
+
+    p {
+      margin-bottom: 1.2rem;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    strong {
+      font-weight: 600;
+    }
+
+    em {
+      font-style: italic;
+    }
+
+    /* ── Table ──────────────────────────── */
+
+    .table-wrap {
+      margin: 2rem 0;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    thead th {
+      text-align: left;
+      font-weight: 600;
+      padding: 0.6rem 1rem 0.6rem 0;
+      border-bottom: 2px solid #1a1a1a;
+    }
+
+    tbody td {
+      padding: 0.55rem 1rem 0.55rem 0;
+      border-bottom: 1px solid #e8e8e5;
+      vertical-align: top;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 1px solid #1a1a1a;
+    }
+
+    /* ── Blockquote (for callouts) ──────── */
+
+    blockquote {
+      border-left: 2px solid #ccc;
+      padding-left: 1.2rem;
+      margin: 1.8rem 0;
+      color: #444;
+      font-style: italic;
+    }
+
+    /* ── Footnotes ─────────────────────── */
+
+    .footnotes {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #ddd;
+    }
+
+    .footnotes h2 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 1rem;
+    }
+
+    .footnotes ol {
+      padding-left: 1.5rem;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: #555;
+    }
+
+    .footnotes li {
+      margin-bottom: 0.5rem;
+    }
+
+    sup a {
+      color: #1a1a1a;
+      text-decoration: none;
+      font-size: 0.72em;
+      vertical-align: super;
+      line-height: 0;
+      padding: 0 0.1em;
+    }
+
+    sup a:hover {
+      text-decoration: underline;
+    }
+
+    .footnotes a.back {
+      text-decoration: none;
+      color: #999;
+      margin-left: 0.3em;
+    }
+
+    /* ── Links ──────────────────────────── */
+
+    a {
+      color: #1a1a1a;
+      text-decoration: underline;
+      text-decoration-color: #bbb;
+      text-underline-offset: 0.15em;
+      transition: text-decoration-color 0.15s;
+    }
+
+    a:hover {
+      text-decoration-color: #1a1a1a;
+    }
+
+    /* ── Utility ────────────────────────── */
+
+    .small-caps {
+      font-variant: small-caps;
+      letter-spacing: 0.03em;
+    }
+
+    code {
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.82em;
+      background: #f0f0ed;
+      padding: 0.15em 0.35em;
+      border-radius: 3px;
+    }
+
+    /* ── Print ──────────────────────────── */
+
+    @media print {
+      body {
+        background: #fff;
+        font-size: 12pt;
+      }
+      article {
+        padding: 0;
+      }
+      hr {
+        border-color: #999;
+      }
+    }
+
+    /* ── Mobile ─────────────────────────── */
+
+    @media (max-width: 640px) {
+      html {
+        font-size: 16px;
+      }
+      article {
+        padding: 3rem 0 5rem;
+      }
+      header {
+        margin-bottom: 3rem;
+      }
+      .abstract {
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<article>
+
+  <!-- ── Title Block ──────────────────────────────────── -->
+
+  <header>
+    <h1>ClawBrowser: A Proactive,<br>Memory-Persistent AI Browser</h1>
+    <p class="authors">Yungoo Kim</p>
+    <p class="date">February 2026</p>
+  </header>
+
+  <!-- ── Abstract ─────────────────────────────────────── -->
+
+  <div class="abstract">
+    <h2>Abstract</h2>
+    <p>
+      We present ClawBrowser, a lightweight open-source web browser in which an
+      AI agent is integrated at the architectural level rather than appended as
+      an extension or sidebar. Unlike existing AI-augmented browsers that operate
+      reactively and discard context between sessions, ClawBrowser maintains
+      persistent long-term memory, runs proactive background monitoring, and
+      performs nightly self-reflection to continuously refine its understanding of
+      the user. The system supports multiple AI backends, processes voice input
+      locally, stores all data on-device, and ships as a single binary under
+      10&nbsp;MB. This paper describes the design philosophy, core architecture,
+      and distinguishing characteristics of the system.
+    </p>
+  </div>
+
+  <hr>
+
+  <!-- ── 1. Introduction ─────────────────────────────── -->
+
+  <h2><span class="section-num">1.</span> Introduction</h2>
+
+  <p>
+    The modern browser is, for most people, the primary interface to the
+    internet. Over the past two years, several companies have attempted to
+    augment that interface with artificial intelligence. Perplexity released
+    Comet; OpenAI released Atlas. Both follow the same pattern: embed a
+    language model beside the browsing experience and let the user invoke it on
+    demand.
+  </p>
+
+  <p>
+    The result is a fundamentally <em>reactive</em> system. The user asks a
+    question; the model answers. The user gives a command; the model executes
+    it. When the tab closes, the context is gone. This interaction model treats
+    the AI as a tool to be picked up and put down&mdash;useful, but stateless
+    and passive.
+  </p>
+
+  <p>
+    ClawBrowser begins from a different premise: the AI should not sit beside
+    the browser. It should <em>be</em> the browser&mdash;or at least, be so
+    deeply woven into its fabric that the distinction between &ldquo;browsing&rdquo;
+    and &ldquo;asking the AI&rdquo; ceases to exist. The agent sees every page
+    the user sees, remembers what matters across sessions, anticipates needs
+    before they are articulated, and improves its own behavior through nightly
+    self-evaluation.<sup><a href="#fn1" id="ref1">1</a></sup>
+  </p>
+
+  <p>
+    This paper describes the architecture and design choices that make this
+    possible.
+  </p>
+
+  <hr>
+
+  <!-- ── 2. Related Work ─────────────────────────────── -->
+
+  <h2><span class="section-num">2.</span> Related Work</h2>
+
+  <p>
+    <strong>Comet</strong> (Perplexity, 2025) integrates Perplexity&rsquo;s
+    search-and-answer engine into a Chromium-based browser shell. The AI is
+    accessible through a sidebar and can answer queries about the current page.
+    It does not maintain memory between sessions, operates only when invoked,
+    and is locked to Perplexity&rsquo;s proprietary model
+    infrastructure.<sup><a href="#fn2" id="ref2">2</a></sup>
+  </p>
+
+  <p>
+    <strong>Atlas</strong> (OpenAI, 2025) takes a similar approach with
+    OpenAI&rsquo;s model stack. The assistant can be invoked via a dedicated
+    panel, and recent interactions are cached for short-term continuity. Like
+    Comet, it is reactive, proprietary, and single-provider.
+  </p>
+
+  <p>
+    Both products represent meaningful steps toward AI-augmented browsing.
+    However, they share three structural limitations: they are reactive rather
+    than proactive, stateless across sessions, and closed-source with
+    vendor-locked AI backends. ClawBrowser addresses all three.
+  </p>
+
+  <hr>
+
+  <!-- ── 3. Architecture ─────────────────────────────── -->
+
+  <h2><span class="section-num">3.</span> Architecture</h2>
+
+  <p>
+    ClawBrowser is built on the host operating system&rsquo;s native browser
+    engine&mdash;WebKit on macOS, WebView2 on Windows, WebKitGTK on
+    Linux&mdash;keeping the entire application under 10&nbsp;MB. The AI agent
+    runs as a persistent background process with deep hooks into the browsing
+    layer. Four subsystems define its behavior.
+  </p>
+
+  <h3><span class="section-num">3.1</span> Proactive Heartbeat</h3>
+
+  <p>
+    Rather than waiting for explicit commands, the agent maintains a continuous
+    background pulse&mdash;a &ldquo;heartbeat&rdquo;&mdash;that monitors user
+    activity across all open tabs. It observes browsing patterns, detects
+    repetitive tasks, and surfaces contextual suggestions before the user asks.
+    If the user has been comparing flights across three tabs for twenty minutes,
+    the agent offers to consolidate the comparison. If a form resembles one
+    filled out previously, it begins pre-filling
+    fields.<sup><a href="#fn3" id="ref3">3</a></sup>
+  </p>
+
+  <h3><span class="section-num">3.2</span> Persistent Memory</h3>
+
+  <p>
+    Context in ClawBrowser does not end with the session. The agent writes to
+    and reads from a set of structured local files that encode long-term
+    knowledge about the user:
+  </p>
+
+  <p>
+    <code>SOUL.md</code> captures personality, tone preferences, and
+    communication style. <code>USER.md</code> stores factual preferences and
+    biographical details&mdash;the user&rsquo;s preferred airline, their
+    manager&rsquo;s name, their timezone. <code>IDENTITY.md</code> holds
+    workflow patterns and role-specific context. These files are read on every
+    launch and updated incrementally as the agent learns.
+  </p>
+
+  <p>
+    The effect is cumulative: the longer ClawBrowser is used, the less it needs
+    to ask. It already knows the user&rsquo;s defaults.
+  </p>
+
+  <h3><span class="section-num">3.3</span> Self-Reflection Engine</h3>
+
+  <p>
+    Each night at midnight, the agent runs a self-reflection
+    cycle.<sup><a href="#fn4" id="ref4">4</a></sup> During this phase, it
+    reviews the day&rsquo;s interactions, extracts patterns, summarizes new
+    knowledge, updates its memory files, and re-indexes its local state. By
+    morning, the agent has consolidated what it learned and is incrementally
+    better calibrated to the user&rsquo;s behavior.
+  </p>
+
+  <p>
+    No other AI browser performs automated self-evaluation. The reflection
+    engine is what transforms ClawBrowser from a tool with memory into a tool
+    that <em>learns</em>.
+  </p>
+
+  <h3><span class="section-num">3.4</span> Multi-Model Backend</h3>
+
+  <p>
+    ClawBrowser is not bound to a single AI provider. During setup, users
+    select from OpenAI, Anthropic, Groq, local models via Ollama, or
+    llama.cpp running entirely on-device. The system supports a two-tier
+    configuration: a primary model for complex reasoning and a secondary model
+    for fast, lightweight sub-tasks. Models can be swapped at any time without
+    data loss or reconfiguration.
+  </p>
+
+  <h3><span class="section-num">3.5</span> Local Voice Interface</h3>
+
+  <p>
+    Built-in speech recognition runs on-device using the operating
+    system&rsquo;s native speech framework. Audio never leaves the machine.
+    Users can interact with the agent entirely by voice, entirely by keyboard,
+    or through any combination of the two.
+  </p>
+
+  <hr>
+
+  <!-- ── 4. Privacy & Security ────────────────────────── -->
+
+  <h2><span class="section-num">4.</span> Privacy &amp; Security</h2>
+
+  <p>
+    Every byte of user data&mdash;browsing history, AI conversations, memory
+    files, API keys&mdash;is stored locally and encrypted with AES-256 behind a
+    user-defined master password. Nothing is transmitted to any server unless
+    explicitly directed by the user (e.g., when making an API call to a
+    cloud-hosted model). The local-first architecture means that ClawBrowser
+    functions fully offline when paired with a local model backend.
+  </p>
+
+  <hr>
+
+  <!-- ── 5. Comparison ────────────────────────────────── -->
+
+  <h2><span class="section-num">5.</span> Comparative Overview</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>ClawBrowser</th>
+          <th>Comet</th>
+          <th>Atlas</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>AI integration</td>
+          <td>Architectural</td>
+          <td>Sidebar</td>
+          <td>Panel</td>
+        </tr>
+        <tr>
+          <td>Behavior</td>
+          <td>Proactive</td>
+          <td>Reactive</td>
+          <td>Reactive</td>
+        </tr>
+        <tr>
+          <td>Persistent memory</td>
+          <td>Yes</td>
+          <td>No</td>
+          <td>Limited</td>
+        </tr>
+        <tr>
+          <td>Self-reflection</td>
+          <td>Nightly</td>
+          <td>None</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td>Model backends</td>
+          <td>Multiple / local</td>
+          <td>Perplexity only</td>
+          <td>OpenAI only</td>
+        </tr>
+        <tr>
+          <td>Voice input</td>
+          <td>Local, on-device</td>
+          <td>Cloud-based</td>
+          <td>Cloud-based</td>
+        </tr>
+        <tr>
+          <td>Data storage</td>
+          <td>Local, encrypted</td>
+          <td>Cloud</td>
+          <td>Cloud</td>
+        </tr>
+        <tr>
+          <td>Source</td>
+          <td>Open (MIT)</td>
+          <td>Proprietary</td>
+          <td>Proprietary</td>
+        </tr>
+        <tr>
+          <td>Install size</td>
+          <td>~10 MB</td>
+          <td>~500 MB</td>
+          <td>~500 MB</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr>
+
+  <!-- ── 6. Availability ─────────────────────────────── -->
+
+  <h2><span class="section-num">6.</span> Availability</h2>
+
+  <p>
+    ClawBrowser is released under the MIT license. Source code, pre-built
+    binaries for macOS, Windows, and Linux, and contribution guidelines are
+    available at
+    <a href="https://github.com/yungookim/ClawBrowser">github.com/yungookim/ClawBrowser</a>.
+  </p>
+
+  <p>
+    System requirements are minimal: any modern operating system, approximately
+    10&nbsp;MB of disk space, and 8&nbsp;GB of RAM if using local voice
+    recognition or local AI models. Setup is handled through a guided wizard
+    that completes in under sixty seconds.
+  </p>
+
+  <hr>
+
+  <!-- ── Footnotes ────────────────────────────────────── -->
+
+  <div class="footnotes">
+    <h2>Notes</h2>
+    <ol>
+      <li id="fn1">
+        ClawBrowser&rsquo;s design philosophy descends from
+        <a href="https://github.com/yungookim/ClawBrowser">OpenClaw</a>,
+        a terminal-based AI agent for developers. ClawBrowser adapts the
+        same proactive, memory-rich paradigm for general web browsing.
+        <a href="#ref1" class="back">&uarr;</a>
+      </li>
+      <li id="fn2">
+        Comet and Atlas feature descriptions are based on publicly available
+        product documentation as of early 2026.
+        <a href="#ref2" class="back">&uarr;</a>
+      </li>
+      <li id="fn3">
+        The heartbeat system operates as a lightweight polling loop with
+        configurable intervals, not a continuous screen-capture mechanism.
+        Resource overhead is negligible on modern hardware.
+        <a href="#ref3" class="back">&uarr;</a>
+      </li>
+      <li id="fn4">
+        The reflection cycle is scheduled but can also be triggered manually.
+        It processes only locally stored interaction summaries and does not
+        transmit data externally.
+        <a href="#ref4" class="back">&uarr;</a>
+      </li>
+    </ol>
+  </div>
+
+</article>
+
+</body>
+</html>
