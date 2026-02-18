@@ -24,7 +24,7 @@ describe('CommandExecutor', () => {
     executor.setAllowlist([
       {
         command: process.execPath,
-        argsRegex: ['^-e$', '^console\.log\("ok"\)$'],
+        argsRegex: ['^-e$', '^console\\.log\\("ok"\\)$'],
       },
     ]);
     executor.setWorkspaceDir(workspaceDir);
@@ -39,7 +39,7 @@ describe('CommandExecutor', () => {
     executor.setAllowlist([
       {
         command: process.execPath,
-        argsRegex: ['^-e$', '^console\.log\("ok"\)$'],
+        argsRegex: ['^-e$', '^console\\.log\\("ok"\\)$'],
       },
     ]);
     executor.setWorkspaceDir(workspaceDir);
@@ -54,7 +54,7 @@ describe('CommandExecutor', () => {
     executor.setAllowlist([
       {
         command: process.execPath,
-        argsRegex: ['^-e$', '^console\.log\("ok"\)$'],
+        argsRegex: ['^-e$', '^console\\.log\\("ok"\\)$'],
       },
     ]);
     executor.setWorkspaceDir(workspaceDir);

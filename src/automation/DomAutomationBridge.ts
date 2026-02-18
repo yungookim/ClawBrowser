@@ -42,13 +42,17 @@ export class DomAutomationBridge {
     this.setActiveCount(0);
   }
 
-  async execute(actions: DomAction[], options: { tabId?: string; timeoutMs?: number; returnMode?: 'all' | 'last' | 'none' } = {}): Promise<DomAutomationResult> {
+  async execute(
+    actions: DomAction[],
+    options: { tabId?: string; timeoutMs?: number; returnMode?: 'all' | 'last' | 'none'; descriptorMode?: 'full' | 'balanced' } = {},
+  ): Promise<DomAutomationResult> {
     const request: DomAutomationRequest = {
       requestId: this.createRequestId(),
       tabId: options.tabId,
       actions,
       timeoutMs: options.timeoutMs,
       returnMode: options.returnMode,
+      descriptorMode: options.descriptorMode,
     };
     return this.executeRequest(request);
   }

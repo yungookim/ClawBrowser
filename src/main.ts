@@ -13,6 +13,7 @@ import { DomAutomationBridge } from './automation/DomAutomationBridge';
 import { SidecarAutomationRouter } from './automation/SidecarAutomationRouter';
 import { Vault } from './vault/Vault';
 import { VaultUI } from './vault/VaultUI';
+import { VaultStore } from './vault/VaultStore';
 import { Wizard, type ModelRole } from './onboarding/Wizard';
 import { providerRequiresApiKey } from './shared/providerDefaults';
 import type { AgentControlSettings } from './agent/types';
@@ -46,6 +47,7 @@ async function bootstrap(): Promise<void> {
   }
 
   const vault = new Vault(0);
+  const vaultStore = new VaultStore(vault, true);
   const vaultUI = new VaultUI(vault);
   vaultUI.hide();
   let vaultLocked = false;
@@ -53,6 +55,12 @@ async function bootstrap(): Promise<void> {
   let onboardingActive = false;
   let onboardingRestoreTabId: string | null = null;
   let settingsPanel: SettingsPanel | null = null;
+  let vaultEncryptionEnabled = true;
+  const setTabsLocked = (locked: boolean) => {
+    if (typeof (tabBar as { setLocked?: (state: boolean) => void }).setLocked === 'function') {
+      tabBar.setLocked(locked);
+    }
+  };
 
   const configureModelsFromVault = async (config: {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
@@ -64,7 +72,7 @@ async function bootstrap(): Promise<void> {
       if (!model) continue;
       let apiKey: string | undefined;
       try {
-        apiKey = await vault.get(`apikey:${role}`);
+        apiKey = await vaultStore.get(`apikey:${role}`);
       } catch {
         apiKey = undefined;
       }
@@ -92,7 +100,7 @@ async function bootstrap(): Promise<void> {
   const enterVaultLockedState = () => {
     vaultLocked = true;
     vaultRestoreTabId = tabManager.getActiveTabId() || tabManager.getTabs()[0]?.id || null;
-    tabBar.setLocked(true);
+    setTabsLocked(true);
     invoke('hide_all_tabs').catch((err) => {
       console.warn('Failed to hide tabs for vault lock:', err);
     });
@@ -100,7 +108,7 @@ async function bootstrap(): Promise<void> {
 
   const restoreVaultTabs = async () => {
     vaultLocked = false;
-    tabBar.setLocked(false);
+    setTabsLocked(false);
     if (settingsPanel?.isVisible()) {
       await invoke('hide_all_tabs');
       vaultRestoreTabId = null;
@@ -122,9 +130,11 @@ async function bootstrap(): Promise<void> {
     vaultRestoreTabId = null;
   };
 
-  vault.onLock(() => {
-    enterVaultLockedState();
-  });
+  if (typeof vault.onLock === 'function') {
+    vault.onLock(() => {
+      enterVaultLockedState();
+    });
+  }
 
   const setVaultUnlockHandler = (config: {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
@@ -142,13 +152,14 @@ async function bootstrap(): Promise<void> {
   const restoreContentTabs = async () => {
     try {
       if (settingsPanel?.isVisible()) {
-        if (tabManager.getTabs().length === 0) {
-          await tabManager.createTab('about:blank');
-        }
-        await invoke('hide_all_tabs');
-        onboardingRestoreTabId = null;
-        return;
+      if (tabManager.getTabs().length === 0) {
+        await tabManager.createTab('about:blank');
       }
+      await invoke('hide_all_tabs');
+      onboardingRestoreTabId = null;
+      setTabsLocked(false);
+      return;
+    }
 
       const tabs = tabManager.getTabs();
       const tabIds = new Set(tabs.map((tab) => tab.id));
@@ -181,8 +192,9 @@ async function bootstrap(): Promise<void> {
       console.warn('Failed to hide tabs for onboarding:', err);
     });
 
+    const useEncryptedVault = vaultEncryptionEnabled;
     let existingVaultData: string | null = null;
-    if (!freshVault) {
+    if (useEncryptedVault && !freshVault) {
       try {
         const { data } = await sidecar.loadVault();
         existingVaultData = data || null;
@@ -191,7 +203,7 @@ async function bootstrap(): Promise<void> {
       }
     }
 
-    const wizard = new Wizard(vault, existingVaultData);
+    const wizard = new Wizard(vaultStore, existingVaultData, useEncryptedVault);
     wizard.setOnComplete(async (result) => {
       try {
         const modelsPayload: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }> = {};
@@ -211,17 +223,26 @@ async function bootstrap(): Promise<void> {
           workspacePath: result.workspacePath,
           models: modelsPayload,
           agentControl: result.agentControl,
+          vaultEncryptionEnabled: useEncryptedVault,
         });
 
-        const encrypted = await vault.exportEncrypted();
-        await sidecar.saveVault(encrypted);
-        vaultUI.setEncryptedData(encrypted);
+        const vaultPayload = useEncryptedVault
+          ? await vaultStore.exportEncrypted()
+          : await vaultStore.exportPlaintext();
+        await sidecar.saveVault(vaultPayload);
+        if (useEncryptedVault) {
+          vaultUI.setEncryptedData(vaultPayload);
+        }
         vaultUI.setMissingVaultData(false);
 
         try {
           appConfig = await sidecar.getConfig();
           if (appConfig) {
-            setVaultUnlockHandler(appConfig);
+            vaultEncryptionEnabled = appConfig.vaultEncryptionEnabled !== false;
+            vaultStore.setEncryptionEnabled(vaultEncryptionEnabled);
+            if (vaultEncryptionEnabled) {
+              setVaultUnlockHandler(appConfig);
+            }
           }
         } catch (err) {
           console.warn('Failed to refresh config after onboarding:', err);
@@ -264,6 +285,7 @@ async function bootstrap(): Promise<void> {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
     agentControl: AgentControlSettings;
+    vaultEncryptionEnabled: boolean;
   } | null = null;
 
   try {
@@ -271,25 +293,44 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     console.warn('Failed to load config:', err);
   }
+  if (appConfig) {
+    vaultEncryptionEnabled = appConfig.vaultEncryptionEnabled !== false;
+    vaultStore.setEncryptionEnabled(vaultEncryptionEnabled);
+  }
 
   if (appConfig && !appConfig.onboardingComplete) {
     await startSetupWizard({ freshVault: false });
   } else if (appConfig) {
-    try {
-      const { data } = await sidecar.loadVault();
-      if (data) {
-        vaultUI.setEncryptedData(data);
-        vaultUI.setMissingVaultData(false);
-      } else {
+    if (vaultEncryptionEnabled) {
+      try {
+        const { data } = await sidecar.loadVault();
+        if (data) {
+          vaultUI.setEncryptedData(data);
+          vaultStore.setEncryptedData(data);
+          vaultUI.setMissingVaultData(false);
+        } else {
+          vaultUI.setMissingVaultData(true);
+        }
+      } catch (err) {
+        console.warn('Failed to load vault data:', err);
         vaultUI.setMissingVaultData(true);
       }
-    } catch (err) {
-      console.warn('Failed to load vault data:', err);
-      vaultUI.setMissingVaultData(true);
+      setVaultUnlockHandler(appConfig);
+      enterVaultLockedState();
+      vaultUI.show();
+    } else {
+      try {
+        const { data } = await sidecar.loadVault();
+        await vaultStore.importPlaintext(data);
+      } catch (err) {
+        console.warn('Failed to load plaintext vault data:', err);
+      }
+      vaultLocked = false;
+      setTabsLocked(false);
+      configureModelsFromVault(appConfig).catch((err) => {
+        console.warn('Failed to configure models from plaintext vault:', err);
+      });
     }
-    setVaultUnlockHandler(appConfig);
-    enterVaultLockedState();
-    vaultUI.show();
   }
 
   const debugEnabled = import.meta.env.DEV || localStorage.getItem('claw:debug') === '1';
@@ -343,10 +384,13 @@ async function bootstrap(): Promise<void> {
   new AgentPanel(agentPanelEl, sidecar, tabManager);
 
   settingsPanel = hasLayout && contentSpacerEl
-    ? new SettingsPanel(contentSpacerEl, sidecar, tabManager, vault, () => {
+    ? new SettingsPanel(contentSpacerEl, sidecar, tabManager, vaultStore, () => {
       startSetupWizard({ freshVault: true }).catch((err) => {
         console.warn('Failed to start setup wizard:', err);
       });
+    }, (enabled) => {
+      vaultEncryptionEnabled = enabled;
+      vaultStore.setEncryptionEnabled(enabled);
     })
     : null;
   const navBar = new NavBar(navBarEl, tabManager, {
@@ -404,6 +448,11 @@ async function bootstrap(): Promise<void> {
 
   const syncContentBounds = async () => {
     if (!hasLayout || !contentColumnEl || !appEl) {
+      return;
+    }
+    // Skip repositioning webviews while the settings panel is visible --
+    // webviews are hidden/off-screen and should stay that way.
+    if (settingsPanel?.isVisible()) {
       return;
     }
     const appRect = appEl.getBoundingClientRect();

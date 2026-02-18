@@ -45,10 +45,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: 'dom.automation',
     capability: 'dom',
     action: 'automation',
-    description: 'Run DOM automation actions.',
+    description: 'Run DOM automation actions. descriptorMode: balanced (default) or full (verbose element descriptors).',
     required: ['actions'],
-    optional: ['tabId', 'timeoutMs', 'returnMode'],
-    validate: (params) => Array.isArray(params.actions) ? null : 'actions must be an array',
+    optional: ['tabId', 'timeoutMs', 'returnMode', 'descriptorMode'],
+    validate: (params) => {
+      if (!Array.isArray(params.actions)) return 'actions must be an array';
+      if (typeof params.descriptorMode === 'string'
+        && params.descriptorMode !== 'full'
+        && params.descriptorMode !== 'balanced') {
+        return 'descriptorMode must be "full" or "balanced"';
+      }
+      return null;
+    },
   },
   { name: 'storage.cookies.get', capability: 'storage', action: 'cookies.get', description: 'Read cookies.', optional: ['url', 'domain', 'name'] },
   {

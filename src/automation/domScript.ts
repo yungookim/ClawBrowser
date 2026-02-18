@@ -100,6 +100,52 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
     };
   };
 
+  const getAriaBool = (el, name) => {
+    if (!el || !el.getAttribute) return null;
+    const value = el.getAttribute(name);
+    if (value === null) return null;
+    if (value === 'true' || value === '') return true;
+    if (value === 'false') return false;
+    return null;
+  };
+
+  const getBoolProp = (el, prop) => (el && prop in el ? Boolean(el[prop]) : null);
+
+  const getStateBool = (el, ariaName, prop) => {
+    const ariaValue = getAriaBool(el, ariaName);
+    if (ariaValue !== null) return ariaValue;
+    return getBoolProp(el, prop);
+  };
+
+  const describeElementBalanced = (el) => {
+    if (!el || !(el instanceof Element)) return null;
+    const href = el.getAttribute ? el.getAttribute('href') : null;
+    const src = el.getAttribute ? el.getAttribute('src') : null;
+    return {
+      tag: el.tagName ? el.tagName.toLowerCase() : 'unknown',
+      id: el.id || null,
+      name: el.getAttribute ? el.getAttribute('name') : null,
+      role: el.getAttribute ? el.getAttribute('role') : null,
+      ariaLabel: el.getAttribute ? el.getAttribute('aria-label') : null,
+      placeholder: el.getAttribute ? el.getAttribute('placeholder') : null,
+      type: el.getAttribute ? el.getAttribute('type') : null,
+      text: truncate(normalize(el.textContent || ''), 200),
+      visible: isVisible(el),
+      href: typeof href === 'string' ? truncate(href, 200) : null,
+      src: typeof src === 'string' ? truncate(src, 200) : null,
+      value: 'value' in el ? truncate(String(el.value ?? ''), 200) : null,
+      state: {
+        disabled: getStateBool(el, 'aria-disabled', 'disabled'),
+        checked: getStateBool(el, 'aria-checked', 'checked'),
+        expanded: getStateBool(el, 'aria-expanded', 'open'),
+        selected: getStateBool(el, 'aria-selected', 'selected'),
+      },
+      rect: getRect(el),
+    };
+  };
+
+  let describeElementForResult = describeElement;
+
   const implicitRoleSelector = (role) => {
     switch (role) {
       case 'button':
@@ -340,7 +386,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
 
   const toSerializable = (value) => {
     if (value instanceof Element) {
-      return describeElement(value);
+      return describeElementForResult(value);
     }
     if (Array.isArray(value)) {
       return value.map(toSerializable);
@@ -374,7 +420,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
           el.click();
         }
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async dblclick(action) {
       const el = pickElement(action.target);
@@ -389,25 +435,25 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
         el.click();
       }
       dispatchMouseEvent(el, 'dblclick', { detail: 2 });
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async hover(action) {
       const el = pickElement(action.target);
       scrollIntoViewIfNeeded(el);
       dispatchMouseEvent(el, 'mouseover');
       dispatchMouseEvent(el, 'mousemove');
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async focus(action) {
       const el = pickElement(action.target);
       scrollIntoViewIfNeeded(el);
       el.focus && el.focus();
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async blur(action) {
       const el = pickElement(action.target);
       el.blur && el.blur();
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async type(action) {
       const el = pickElement(action.target);
@@ -446,7 +492,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
         dispatchKeyboardEvent(el, 'keyup', 'Enter');
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async press(action) {
       const el = action.target ? pickElement(action.target) : (document.activeElement || document.body);
@@ -469,7 +515,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
       } else if (el.isContentEditable) {
         updateEditableValue(el, action.value);
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async clear(action) {
       const el = pickElement(action.target);
@@ -478,7 +524,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
       } else if (el.isContentEditable) {
         updateEditableValue(el, '');
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async select(action) {
       const el = pickElement(action.target);
@@ -510,7 +556,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
       } else if (typeof form.submit === 'function') {
         form.submit();
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async check(action) {
       const el = pickElement(action.target);
@@ -519,7 +565,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
       } else {
         throw new Error('check action requires checkbox or radio input');
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async scroll(action) {
       if (action.target) {
@@ -549,7 +595,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
         inline: action.inline || 'nearest',
         behavior: 'auto',
       });
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async waitFor(action) {
       const state = action.state || 'attached';
@@ -602,7 +648,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
     },
     async query(action) {
       const elements = resolveElements(action.target).slice(0, action.maxResults || MAX_QUERY_RESULTS);
-      return elements.map(describeElement);
+      return elements.map((el) => describeElementForResult(el));
     },
     async getText(action) {
       if (!action.target) {
@@ -637,12 +683,12 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
     async setAttribute(action) {
       const el = pickElement(action.target);
       el.setAttribute(action.name, String(action.value));
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async removeAttribute(action) {
       const el = pickElement(action.target);
       el.removeAttribute(action.name);
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async dispatchEvent(action) {
       const el = pickElement(action.target);
@@ -701,7 +747,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
           mark.remove();
         }, action.durationMs);
       }
-      return describeElement(el);
+      return describeElementForResult(el);
     },
     async clearHighlights() {
       const overlay = document.getElementById('__claw_dom_highlight__');
@@ -723,6 +769,8 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
     let ok = true;
     let error = null;
     const actions = Array.isArray(request.actions) ? request.actions : [];
+    const descriptorMode = request && request.descriptorMode === 'full' ? 'full' : 'balanced';
+    describeElementForResult = descriptorMode === 'balanced' ? describeElementBalanced : describeElement;
 
     for (let i = 0; i < actions.length; i += 1) {
       const action = actions[i];

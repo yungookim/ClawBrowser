@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Wizard } from '../../src/onboarding/Wizard';
-import type { Vault } from '../../src/vault/Vault';
+import { DEFAULT_AGENT_CONTROL } from '../../src/agent/types';
 
 function findButton(label: string, scope: ParentNode = document): HTMLButtonElement {
   const button = Array.from(scope.querySelectorAll('button'))
@@ -34,26 +34,29 @@ function fillModelSection(section: HTMLElement, values: { provider?: string; mod
   const apiKeyInput = section.querySelector('input[type="password"]') as HTMLInputElement;
 
   if (values.provider) providerSelect.value = values.provider;
+  if (values.provider) providerSelect.dispatchEvent(new Event('change', { bubbles: true }));
   if (values.model) modelInput.value = values.model;
   if (values.apiKey) apiKeyInput.value = values.apiKey;
 }
 
 describe('Wizard', () => {
-  let vault: Vault & {
-    unlock: ReturnType<typeof vi.fn>;
+  let vault: {
+    unlockEncrypted: ReturnType<typeof vi.fn>;
     set: ReturnType<typeof vi.fn>;
+    setEncryptionEnabled: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
     document.body.innerHTML = '';
     vault = {
-      unlock: vi.fn().mockResolvedValue(undefined),
+      unlockEncrypted: vi.fn().mockResolvedValue(undefined),
       set: vi.fn().mockResolvedValue(undefined),
+      setEncryptionEnabled: vi.fn(),
     } as any;
   });
 
   it('walks through steps and completes with valid data', async () => {
-    const wizard = new Wizard(vault);
+    const wizard = new Wizard(vault as any);
     const onComplete = vi.fn();
     wizard.setOnComplete(onComplete);
 
@@ -88,9 +91,12 @@ describe('Wizard', () => {
     findButton('Next', getVisibleStep()).click();
     expect(getVisibleStepIndex()).toBe(2);
 
+    findButton('Next', getVisibleStep()).click();
+    expect(getVisibleStepIndex()).toBe(3);
+
     const pwInput = document.querySelector('input[placeholder^="Passphrase"]') as HTMLInputElement;
     const confirmInput = document.querySelector('input[placeholder^="Confirm passphrase"]') as HTMLInputElement;
-    const pwError = document.querySelector('.wizard-error') as HTMLElement;
+    const pwError = getVisibleStep().querySelector('.wizard-error') as HTMLElement;
 
     pwInput.value = 'short';
     confirmInput.value = 'short';
@@ -108,7 +114,7 @@ describe('Wizard', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(vault.unlock).toHaveBeenCalledWith('password123');
+    expect(vault.unlockEncrypted).toHaveBeenCalledWith('password123', null);
     expect(vault.set).toHaveBeenCalledWith('apikey:primary', 'sk-primary');
     expect(vault.set).toHaveBeenCalledWith('apikey:secondary', 'sk-secondary');
 
@@ -122,25 +128,26 @@ describe('Wizard', () => {
           provider: 'openai',
           model: 'gpt-4o',
           apiKey: 'sk-primary',
-          baseUrl: undefined,
+          baseUrl: 'https://api.openai.com/v1',
           role: 'primary',
         },
         secondary: {
           provider: 'groq',
           model: 'llama-3.3-70b',
           apiKey: 'sk-secondary',
-          baseUrl: undefined,
+          baseUrl: 'https://api.groq.com/openai/v1',
           role: 'secondary',
         },
         subagent: null,
       },
+      agentControl: DEFAULT_AGENT_CONTROL,
       password: 'password123',
     });
   });
 
   it('uses existing vault data when provided', async () => {
     const existingVaultData = '{"salt":"abc","entries":{}}';
-    const wizard = new Wizard(vault, existingVaultData);
+    const wizard = new Wizard(vault as any, existingVaultData);
     const onComplete = vi.fn();
     wizard.setOnComplete(onComplete);
 
@@ -157,6 +164,9 @@ describe('Wizard', () => {
     findButton('Next', getVisibleStep()).click();
     expect(getVisibleStepIndex()).toBe(2);
 
+    findButton('Next', getVisibleStep()).click();
+    expect(getVisibleStepIndex()).toBe(3);
+
     const pwInput = document.querySelector('input[placeholder^="Passphrase"]') as HTMLInputElement;
     const confirmInput = document.querySelector('input[placeholder^="Confirm passphrase"]') as HTMLInputElement;
 
@@ -166,6 +176,49 @@ describe('Wizard', () => {
 
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(vault.unlock).toHaveBeenCalledWith('password123', existingVaultData);
+    expect(vault.unlockEncrypted).toHaveBeenCalledWith('password123', existingVaultData);
+  });
+
+  it('skips passphrase when encryption is disabled', async () => {
+    const wizard = new Wizard(vault as any, null, false);
+    const onComplete = vi.fn();
+    wizard.setOnComplete(onComplete);
+
+    wizard.show();
+    findButton('Get Started', getVisibleStep()).click();
+    expect(getVisibleStepIndex()).toBe(1);
+
+    const primarySection = getModelSection('Primary model');
+    fillModelSection(primarySection, {
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'sk-primary',
+    });
+
+    findButton('Next', getVisibleStep()).click();
+    expect(getVisibleStepIndex()).toBe(2);
+
+    findButton('Launch ClawBrowser', getVisibleStep()).click();
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(vault.unlockEncrypted).not.toHaveBeenCalled();
+    expect(vault.set).toHaveBeenCalledWith('apikey:primary', 'sk-primary');
+    expect(onComplete).toHaveBeenCalledWith({
+      workspacePath: null,
+      models: {
+        primary: {
+          provider: 'openai',
+          model: 'gpt-4o',
+          apiKey: 'sk-primary',
+          baseUrl: 'https://api.openai.com/v1',
+          role: 'primary',
+        },
+        secondary: null,
+        subagent: null,
+      },
+      agentControl: DEFAULT_AGENT_CONTROL,
+      password: null,
+    });
   });
 });

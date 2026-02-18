@@ -8,6 +8,7 @@ export interface DomAutomationRequest {
   actions: DomAutomationAction[];
   timeoutMs?: number;
   returnMode?: 'all' | 'last' | 'none';
+  descriptorMode?: 'full' | 'balanced';
 }
 
 export interface DomAutomationResult {
@@ -49,6 +50,7 @@ export class DomAutomation {
       actions,
       timeoutMs,
       returnMode: params.returnMode,
+      descriptorMode: params.descriptorMode,
     };
 
     this.notify('domAutomationRequest', requestPayload);

@@ -22,9 +22,11 @@ export class VaultUI {
     document.body.appendChild(this.overlay);
 
     // Re-show lock screen when vault locks
-    this.vault.onLock(() => {
-      this.show();
-    });
+    if (typeof this.vault.onLock === 'function') {
+      this.vault.onLock(() => {
+        this.show();
+      });
+    }
   }
 
   setOnUnlock(callback: () => void): void {

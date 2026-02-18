@@ -3,7 +3,8 @@ Date: 2026-02-18
 
 Summary
 Add a request-level `descriptorMode` option to `dom.automation` so agents can request compact,
-LLM-friendly element descriptors without changing selection behavior. Default remains `full`.
+LLM-friendly element descriptors without changing selection behavior. Default is `balanced`
+unless `descriptorMode: "full"` is explicitly set.
 
 Goals
 - Allow agents to toggle between full and balanced element descriptors.
@@ -25,9 +26,10 @@ Options Considered
 
 Proposed Design
 Add `descriptorMode?: 'full' | 'balanced'` to `DomAutomationRequest` and pass it through the
-sidecar to the injected DOM script. When `balanced`, element serialization uses a compact schema.
-All element-returning actions (e.g. `query`, `click`, `hover`, `getText` when it returns an element,
-and `evaluate` results that include Elements) use the selected mode.
+sidecar to the injected DOM script. If omitted, the script defaults to `balanced`. Only an
+explicit `descriptorMode: "full"` returns the verbose schema. All element-returning actions
+(e.g. `query`, `click`, `hover`, `getText` when it returns an element, and `evaluate` results that
+include Elements) use the selected mode.
 
 Balanced descriptor schema
 - tag
@@ -52,7 +54,7 @@ Data Flow
 4) Results are returned; text compression remains separate.
 
 Error Handling
-- Unknown `descriptorMode` falls back to `full`.
+- Unknown or missing `descriptorMode` falls back to `balanced`.
 - Missing/irrelevant attributes are returned as null.
 
 Impacted Files

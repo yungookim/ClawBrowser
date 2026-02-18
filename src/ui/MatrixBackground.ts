@@ -34,10 +34,13 @@ export class MatrixBackground {
     accent: DEFAULT_ACCENT,
     muted: DEFAULT_MUTED,
   };
-  private prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private prefersReducedMotion: { matches: boolean };
 
   constructor(overlay: HTMLElement) {
     this.overlay = overlay;
+    this.prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : { matches: false };
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'matrix-background';
     this.canvas.setAttribute('aria-hidden', 'true');

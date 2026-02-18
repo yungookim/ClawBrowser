@@ -184,6 +184,10 @@ export class AgentCapabilityRouter {
       actions,
       timeoutMs: typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined,
       returnMode: typeof params.returnMode === 'string' ? params.returnMode as DomAutomationRequest['returnMode'] : undefined,
+      descriptorMode: typeof params.descriptorMode === 'string'
+        && (params.descriptorMode === 'full' || params.descriptorMode === 'balanced')
+        ? params.descriptorMode as DomAutomationRequest['descriptorMode']
+        : undefined,
     };
 
     const result = await this.domAutomation.executeRequest(request);

@@ -54,12 +54,46 @@ export type DomAction =
   | { type: 'clearHighlights' }
   | { type: 'evaluate'; script: string; args?: unknown[]; target?: DomSelector };
 
+export interface DomElementDescriptorBalanced {
+  tag: string;
+  id: string | null;
+  name: string | null;
+  role: string | null;
+  ariaLabel: string | null;
+  placeholder: string | null;
+  type: string | null;
+  text: string;
+  visible: boolean;
+  href: string | null;
+  src: string | null;
+  value: string | null;
+  state: {
+    disabled: boolean | null;
+    checked: boolean | null;
+    expanded: boolean | null;
+    selected: boolean | null;
+  };
+  rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    top: number;
+    left: number;
+    right: number;
+    bottom: number;
+    pageX: number;
+    pageY: number;
+  } | null;
+}
+
 export interface DomAutomationRequest {
   requestId: string;
   tabId?: string;
   actions: DomAction[];
   timeoutMs?: number;
   returnMode?: 'all' | 'last' | 'none';
+  descriptorMode?: 'full' | 'balanced';
 }
 
 export interface DomAutomationError {

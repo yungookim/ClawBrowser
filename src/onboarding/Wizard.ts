@@ -3,7 +3,7 @@ import modelCatalog from '../shared/modelCatalog.json';
 import { Combobox } from '../ui/Combobox';
 import { Dropdown } from '../ui/Dropdown';
 import { MatrixBackground } from '../ui/MatrixBackground';
-import { Vault } from '../vault/Vault';
+import { VaultStore } from '../vault/VaultStore';
 import { DEFAULT_AGENT_CONTROL, type AgentControlSettings } from '../agent/types';
 
 export type ModelRole = 'primary' | 'secondary' | 'subagent';
@@ -21,7 +21,7 @@ export interface WizardResult {
   workspacePath: string | null;
   models: Record<ModelRole, ModelConfig | null>;
   agentControl: AgentControlSettings;
-  password: string;
+  password: string | null;
 }
 
 type WizardCompleteHandler = (result: WizardResult) => void;
@@ -61,11 +61,13 @@ const MODEL_CATALOG = modelCatalog as Record<string, string[]>;
 
 export class Wizard {
   private overlay: HTMLElement;
-  private vault: Vault;
+  private vaultStore: VaultStore;
   private existingVaultData: string | null;
   private background: MatrixBackground;
   private currentStep = 0;
   private steps: HTMLElement[] = [];
+  private totalSteps = 4;
+  private encryptionEnabled: boolean;
   private models: Record<ModelRole, ModelConfig | null> = {
     primary: null,
     secondary: null,
@@ -77,9 +79,12 @@ export class Wizard {
   private workspacePath: string | null = null;
   private onComplete: WizardCompleteHandler | null = null;
 
-  constructor(vault: Vault, existingVaultData: string | null = null) {
-    this.vault = vault;
+  constructor(vaultStore: VaultStore, existingVaultData: string | null = null, encryptionEnabled: boolean = true) {
+    this.vaultStore = vaultStore;
     this.existingVaultData = existingVaultData || null;
+    this.encryptionEnabled = encryptionEnabled;
+    this.totalSteps = encryptionEnabled ? 4 : 3;
+    this.vaultStore.setEncryptionEnabled(encryptionEnabled);
     this.overlay = this.build();
     this.background = new MatrixBackground(this.overlay);
     document.body.appendChild(this.overlay);
@@ -111,7 +116,7 @@ export class Wizard {
     // Step indicators
     const indicators = document.createElement('div');
     indicators.className = 'wizard-indicators';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < this.totalSteps; i++) {
       const dot = document.createElement('div');
       dot.className = 'wizard-dot';
       dot.dataset.step = String(i);
@@ -124,8 +129,10 @@ export class Wizard {
       this.buildWelcomeStep(),
       this.buildModelStep(),
       this.buildAgentControlStep(),
-      this.buildPasswordStep(),
     ];
+    if (this.encryptionEnabled) {
+      this.steps.push(this.buildPasswordStep());
+    }
 
     for (const step of this.steps) {
       step.style.display = 'none';
@@ -652,17 +659,21 @@ export class Wizard {
     const backBtn = document.createElement('button');
     backBtn.className = 'wizard-btn secondary';
     backBtn.textContent = 'Back';
-    backBtn.addEventListener('click', () => this.showStep(2));
+    backBtn.addEventListener('click', () => this.showStep(1));
     btnRow.appendChild(backBtn);
 
     const nextBtn = document.createElement('button');
     nextBtn.className = 'wizard-btn primary';
-    nextBtn.textContent = 'Next';
+    nextBtn.textContent = this.encryptionEnabled ? 'Next' : 'Launch ClawBrowser';
     nextBtn.addEventListener('click', () => {
       const collected = this.collectAgentControl(errorEl);
       if (!collected) return;
       this.agentControl = collected;
-      this.showStep(3);
+      if (this.encryptionEnabled) {
+        this.showStep(3);
+        return;
+      }
+      this.completeWithoutPassword(errorEl);
     });
     btnRow.appendChild(nextBtn);
 
@@ -732,6 +743,32 @@ export class Wizard {
     };
   }
 
+  private async completeWithoutPassword(errorEl: HTMLElement): Promise<void> {
+    errorEl.textContent = '';
+    try {
+      this.vaultStore.setEncryptionEnabled(false);
+      for (const role of Object.keys(this.models) as ModelRole[]) {
+        const model = this.models[role];
+        if (model?.apiKey) {
+          await this.vaultStore.set(`apikey:${role}`, model.apiKey);
+        }
+      }
+
+      this.hide();
+
+      if (this.onComplete) {
+        this.onComplete({
+          workspacePath: this.workspacePath,
+          models: this.models,
+          agentControl: this.agentControl,
+          password: null,
+        });
+      }
+    } catch (err) {
+      errorEl.textContent = 'Failed to initialize vault';
+    }
+  }
+
   private collectModels(errorEl: HTMLElement): Record<ModelRole, ModelConfig | null> | null {
     errorEl.textContent = '';
     const roles: ModelRole[] = ['primary', 'secondary', 'subagent'];
@@ -766,8 +803,10 @@ export class Wizard {
       }
 
       if (providerRequiresApiKey(provider) && !apiKey) {
-        errorEl.textContent = `${roleLabels[role]} model requires an API key for ${provider}.`;
-        return null;
+        if (!this.existingVaultData) {
+          errorEl.textContent = `${roleLabels[role]} model requires an API key for ${provider}.`;
+          return null;
+        }
       }
 
       result[role] = {
@@ -838,18 +877,12 @@ export class Wizard {
       }
 
       try {
-        // Unlock vault with existing data if present, otherwise create a fresh vault.
-        if (this.existingVaultData) {
-          await this.vault.unlock(password, this.existingVaultData);
-        } else {
-          await this.vault.unlock(password);
-        }
+        await this.vaultStore.unlockEncrypted(password, this.existingVaultData);
 
-        // Store API keys in vault per role
         for (const role of Object.keys(this.models) as ModelRole[]) {
           const model = this.models[role];
           if (model?.apiKey) {
-            await this.vault.set(`apikey:${role}`, model.apiKey);
+            await this.vaultStore.set(`apikey:${role}`, model.apiKey);
           }
         }
 
