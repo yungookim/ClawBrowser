@@ -1,5 +1,4 @@
 import * as readline from 'node:readline';
-import * as path from 'node:path';
 import { ModelManager, type Provider, type ModelRole } from './core/ModelManager.js';
 import { AgentCore } from './core/AgentCore.js';
 import { Swarm } from './core/Swarm.js';
