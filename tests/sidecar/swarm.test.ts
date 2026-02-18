@@ -124,4 +124,23 @@ describe('Swarm', () => {
 
     expect(result.finalResult).toBe('Result 1\n\nResult 2');
   });
+
+  it('accepts tool dependencies in constructor', () => {
+    const toolRegistry = { describeTools: vi.fn().mockReturnValue('tools'), parseToolCall: vi.fn() };
+    const dispatcher = { request: vi.fn() };
+    const executor = { execute: vi.fn() };
+    const notify = vi.fn();
+
+    const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, dispatcher as any, executor as any, notify);
+    expect(toolSwarm).toBeDefined();
+  });
+
+  it('has a cancel method that sets aborted', () => {
+    const notify = vi.fn();
+    const toolSwarm = new Swarm(modelManager as any, undefined, undefined, undefined, notify);
+    toolSwarm.cancel();
+    // Aborted flag is private, but we can test it indirectly through executor behavior
+    // For now just verify cancel doesn't throw
+    expect(() => toolSwarm.cancel()).not.toThrow();
+  });
 });

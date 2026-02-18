@@ -1,6 +1,17 @@
 import { StateGraph, Annotation, END } from '@langchain/langgraph';
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { ModelManager } from './ModelManager.js';
+import type { ToolRegistry, ParsedToolCall } from './ToolRegistry.js';
+import type { AgentDispatcher } from './AgentDispatcher.js';
+import type { CommandExecutor } from './CommandExecutor.js';
+
+type Notify = (method: string, params?: Record<string, unknown>) => void;
+
+export interface SwarmBrowserContext {
+  activeTabUrl?: string;
+  activeTabTitle?: string;
+  tabCount?: number;
+}
 
 // State annotation for the swarm graph
 const SwarmState = Annotation.Root({
@@ -22,6 +33,10 @@ const SwarmState = Annotation.Root({
     default: () => '',
   }),
   context: Annotation<Record<string, string>>({
+    reducer: (_prev, next) => next,
+    default: () => ({}),
+  }),
+  browserContext: Annotation<SwarmBrowserContext>({
     reducer: (_prev, next) => next,
     default: () => ({}),
   }),
@@ -49,13 +64,37 @@ You have context about previous steps that have already been completed.`;
  */
 export class Swarm {
   private modelManager: ModelManager;
+  private toolRegistry: ToolRegistry | null;
+  private dispatcher: AgentDispatcher | null;
+  private commandExecutor: CommandExecutor | null;
+  private notify: Notify | null;
+  private aborted = false;
 
-  constructor(modelManager: ModelManager) {
+  constructor(
+    modelManager: ModelManager,
+    toolRegistry?: ToolRegistry,
+    dispatcher?: AgentDispatcher,
+    commandExecutor?: CommandExecutor,
+    notify?: Notify,
+  ) {
     this.modelManager = modelManager;
+    this.toolRegistry = toolRegistry || null;
+    this.dispatcher = dispatcher || null;
+    this.commandExecutor = commandExecutor || null;
+    this.notify = notify || null;
+  }
+
+  cancel(): void {
+    this.aborted = true;
   }
 
   /** Execute a complex task using the planner-executor swarm. */
-  async execute(task: string, context: Record<string, string> = {}): Promise<string> {
+  async execute(
+    task: string,
+    context: Record<string, string> = {},
+    browserContext?: SwarmBrowserContext,
+  ): Promise<string> {
+    this.aborted = false;
     const graph = this.buildGraph();
     const compiled = graph.compile();
 
@@ -66,6 +105,7 @@ export class Swarm {
       stepResults: [],
       finalResult: '',
       context,
+      browserContext: browserContext || {},
     });
 
     return result.finalResult;

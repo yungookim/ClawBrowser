@@ -47,6 +47,14 @@ function providerRequiresApiKey(provider: Provider): boolean {
   return HOSTED_PROVIDERS.has(provider);
 }
 
+function resolveDevLogBaseDir(): string | null {
+  const raw = process.env.CLAW_LOG_DIR;
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return path.isAbsolute(trimmed) ? trimmed : path.resolve(process.cwd(), trimmed);
+}
+
 // Subsystem instances (initialized in boot())
 let modelManager: ModelManager;
 let agentCore: AgentCore;
@@ -112,6 +120,10 @@ function isAgentResult(value: unknown): value is AgentResult {
 /** Initialize all subsystems. */
 async function boot(): Promise<void> {
   systemLogger = new SystemLogger();
+  const devLogBaseDir = resolveDevLogBaseDir();
+  if (devLogBaseDir) {
+    systemLogger.setLogsDir(path.join(devLogBaseDir, 'system'));
+  }
   try {
     await systemLogger.initialize();
     systemLogger.attachConsole();
@@ -137,7 +149,7 @@ async function boot(): Promise<void> {
     agentDispatcher = new AgentDispatcher(sendNotification);
   }
   agentCore = new AgentCore(modelManager, commandExecutor, toolRegistry, agentDispatcher);
-  swarm = new Swarm(modelManager);
+  swarm = new Swarm(modelManager, toolRegistry, agentDispatcher, commandExecutor, sendNotification);
 
   await configureWorkspace(appConfig.workspacePath);
 
@@ -161,7 +173,7 @@ async function configureWorkspace(workspacePath: string | null): Promise<void> {
   await workspace.initialize();
 
   const workspaceDir = workspace.getWorkspaceDir();
-  const logsDir = path.join(workspaceDir, 'logs');
+  const logsDir = resolveDevLogBaseDir() || path.join(workspaceDir, 'logs');
   const systemLogsDir = path.join(logsDir, 'system');
   const memoryDb = path.join(workspaceDir, 'memory', 'index.sqlite');
 
