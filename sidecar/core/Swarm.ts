@@ -1,5 +1,5 @@
 import { StateGraph, Annotation, END } from '@langchain/langgraph';
-import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { ModelManager } from './ModelManager.js';
 import type { ToolRegistry, ParsedToolCall } from './ToolRegistry.js';
 import type { AgentDispatcher } from './AgentDispatcher.js';
@@ -63,6 +63,8 @@ You have context about previous steps that have already been completed.`;
  * Graph flow: planner -> executor (loop) -> synthesizer -> END
  */
 export class Swarm {
+  private static readonly MAX_TOOL_ITERATIONS_PER_STEP = 10;
+
   private modelManager: ModelManager;
   private toolRegistry: ToolRegistry | null;
   private dispatcher: AgentDispatcher | null;
@@ -201,20 +203,97 @@ export class Swarm {
       `\nCurrent step (${state.currentStep + 1}/${state.plan.length}): ${step}`,
     ].filter(Boolean).join('\n');
 
-    try {
-      const response = await model.invoke([
-        new SystemMessage(EXECUTOR_SYSTEM_PROMPT),
-        new HumanMessage(userMessage),
-      ]);
+    // If no toolRegistry, fall back to text-only behavior (just call LLM once)
+    if (!this.toolRegistry) {
+      try {
+        const response = await model.invoke([
+          new SystemMessage(EXECUTOR_SYSTEM_PROMPT),
+          new HumanMessage(userMessage),
+        ]);
 
-      const result = typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content);
+        const result = typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+
+        console.error(`[Swarm/Executor] Step ${state.currentStep + 1} complete`);
+
+        return {
+          stepResults: [result],
+          currentStep: state.currentStep + 1,
+        };
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[Swarm/Executor] Step ${state.currentStep + 1} error:`, errMsg);
+
+        return {
+          stepResults: [`Error: ${errMsg}`],
+          currentStep: state.currentStep + 1,
+        };
+      }
+    }
+
+    // Tool-enabled executor path
+    this.sendNotification('swarmStepStarted', {
+      stepIndex: state.currentStep,
+      description: step,
+      totalSteps: state.plan.length,
+    });
+
+    const toolDescriptions = this.toolRegistry.describeTools();
+    const systemPrompt = `${EXECUTOR_SYSTEM_PROMPT}\n\nAvailable tools:\n${toolDescriptions}\n\nIf you need to perform an action, respond ONLY with a single JSON tool call. Format: {"tool":"<tool-name>","params":{...}}. When the step is complete, respond with a text summary (no JSON).`;
+
+    const messages: BaseMessage[] = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userMessage),
+    ];
+
+    let lastContent = '';
+
+    try {
+      for (let i = 0; i < Swarm.MAX_TOOL_ITERATIONS_PER_STEP; i++) {
+        if (this.aborted) break;
+
+        const response = await model.invoke(messages);
+        const content = typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+        lastContent = content;
+
+        const toolCall = this.toolRegistry.parseToolCall(content);
+        if (!toolCall) {
+          // No tool call found — step is done
+          break;
+        }
+
+        // Execute the tool call
+        const toolResult = await this.executeToolCall(toolCall);
+
+        // Append AI message and tool result to messages
+        messages.push(new AIMessage(content));
+        messages.push(new HumanMessage(
+          `Tool result for ${toolResult.tool}: ${toolResult.ok ? 'Success' : 'Error'}\n${
+            toolResult.ok ? JSON.stringify(toolResult.data) : toolResult.error
+          }`
+        ));
+
+        this.sendNotification('swarmToolExecuted', {
+          stepIndex: state.currentStep,
+          tool: toolResult.tool,
+          ok: toolResult.ok,
+        });
+
+        if (this.aborted) break;
+      }
 
       console.error(`[Swarm/Executor] Step ${state.currentStep + 1} complete`);
 
+      this.sendNotification('swarmStepCompleted', {
+        stepIndex: state.currentStep,
+        result: lastContent.substring(0, 200),
+      });
+
       return {
-        stepResults: [result],
+        stepResults: [lastContent],
         currentStep: state.currentStep + 1,
       };
     } catch (err) {
@@ -225,6 +304,50 @@ export class Swarm {
         stepResults: [`Error: ${errMsg}`],
         currentStep: state.currentStep + 1,
       };
+    }
+  }
+
+  private sendNotification(method: string, params?: Record<string, unknown>): void {
+    if (this.notify) {
+      this.notify(method, params);
+    }
+  }
+
+  private async executeToolCall(toolCall: ParsedToolCall): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+  }> {
+    if (toolCall.kind === 'invalid') {
+      return { tool: toolCall.tool || 'unknown', ok: false, error: toolCall.error };
+    }
+    if (toolCall.kind === 'terminal') {
+      if (!this.commandExecutor) {
+        return { tool: toolCall.tool, ok: false, error: 'Command execution unavailable.' };
+      }
+      try {
+        const result = await this.commandExecutor.execute(toolCall.command, toolCall.args, toolCall.cwd);
+        return { tool: toolCall.tool, ok: result.exitCode === 0, ...result };
+      } catch (err) {
+        return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    if (!this.dispatcher) {
+      return { tool: toolCall.tool, ok: false, error: 'Agent dispatcher unavailable.' };
+    }
+    try {
+      const result = await this.dispatcher.request({
+        capability: toolCall.capability,
+        action: toolCall.action,
+        params: toolCall.params,
+        destructive: toolCall.destructive,
+      });
+      return result.ok
+        ? { tool: toolCall.tool, ok: true, data: result.data }
+        : { tool: toolCall.tool, ok: false, error: result.error?.message || 'Action failed' };
+    } catch (err) {
+      return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 

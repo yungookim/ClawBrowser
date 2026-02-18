@@ -143,4 +143,154 @@ describe('Swarm', () => {
     // For now just verify cancel doesn't throw
     expect(() => toolSwarm.cancel()).not.toThrow();
   });
+
+  describe('tool-enabled executor', () => {
+    it('executes tool calls within a step', async () => {
+      const toolRegistry = {
+        describeTools: vi.fn().mockReturnValue('- tab.navigate: Navigate.'),
+        parseToolCall: vi.fn()
+          .mockReturnValueOnce({
+            kind: 'agent', tool: 'tab.navigate', capability: 'tab', action: 'navigate',
+            params: { url: 'https://google.com' },
+          })
+          .mockReturnValueOnce(null),
+      };
+      const dispatcher = {
+        request: vi.fn().mockResolvedValue({ requestId: '1', ok: true, data: { tabId: 't1' } }),
+      };
+      const notify = vi.fn();
+
+      const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, dispatcher as any, undefined, notify);
+
+      let callCount = 0;
+      const model = {
+        invoke: vi.fn(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ content: '{"tool":"tab.navigate","params":{"url":"https://google.com"}}' });
+          return Promise.resolve({ content: 'Navigated to Google successfully.' });
+        }),
+      };
+      modelManager.createModel.mockImplementation((role: string) =>
+        role === 'subagent' ? model : undefined,
+      );
+
+      const result = await (toolSwarm as any).executorNode({
+        task: 'Search Google',
+        plan: ['Navigate to Google'],
+        currentStep: 0,
+        stepResults: [],
+        finalResult: '',
+        context: {},
+        browserContext: {},
+      });
+
+      expect(dispatcher.request).toHaveBeenCalledTimes(1);
+      expect(result.stepResults[0]).toContain('Navigated to Google');
+      expect(result.currentStep).toBe(1);
+    });
+
+    it('respects max tool iterations per step (10)', async () => {
+      const toolRegistry = {
+        describeTools: vi.fn().mockReturnValue('tools'),
+        parseToolCall: vi.fn().mockReturnValue({
+          kind: 'agent', tool: 'tab.create', capability: 'tab', action: 'create', params: {},
+        }),
+      };
+      const dispatcher = {
+        request: vi.fn().mockResolvedValue({ requestId: '1', ok: true, data: {} }),
+      };
+      const notify = vi.fn();
+
+      const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, dispatcher as any, undefined, notify);
+
+      const model = {
+        invoke: vi.fn().mockResolvedValue({ content: '{"tool":"tab.create","params":{}}' }),
+      };
+      modelManager.createModel.mockImplementation((role: string) =>
+        role === 'subagent' ? model : undefined,
+      );
+
+      const result = await (toolSwarm as any).executorNode({
+        task: 'Loop task',
+        plan: ['Looping step'],
+        currentStep: 0,
+        stepResults: [],
+        finalResult: '',
+        context: {},
+        browserContext: {},
+      });
+
+      expect(dispatcher.request).toHaveBeenCalledTimes(10);
+      expect(result.currentStep).toBe(1);
+    });
+
+    it('sends progress notifications during execution', async () => {
+      const toolRegistry = {
+        describeTools: vi.fn().mockReturnValue('tools'),
+        parseToolCall: vi.fn().mockReturnValueOnce(null),
+      };
+      const notify = vi.fn();
+
+      const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, undefined, undefined, notify);
+
+      const model = {
+        invoke: vi.fn().mockResolvedValue({ content: 'Done with step' }),
+      };
+      modelManager.createModel.mockImplementation((role: string) =>
+        role === 'subagent' ? model : undefined,
+      );
+
+      await (toolSwarm as any).executorNode({
+        task: 'Task',
+        plan: ['Do thing'],
+        currentStep: 0,
+        stepResults: [],
+        finalResult: '',
+        context: {},
+        browserContext: {},
+      });
+
+      expect(notify).toHaveBeenCalledWith('swarmStepStarted', expect.objectContaining({ stepIndex: 0 }));
+      expect(notify).toHaveBeenCalledWith('swarmStepCompleted', expect.objectContaining({ stepIndex: 0 }));
+    });
+
+    it('stops execution when aborted', async () => {
+      const toolRegistry = {
+        describeTools: vi.fn().mockReturnValue('tools'),
+        parseToolCall: vi.fn().mockReturnValue({
+          kind: 'agent', tool: 'tab.create', capability: 'tab', action: 'create', params: {},
+        }),
+      };
+      const dispatcher = {
+        request: vi.fn().mockResolvedValue({ requestId: '1', ok: true, data: {} }),
+      };
+      const notify = vi.fn();
+
+      const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, dispatcher as any, undefined, notify);
+
+      const model = {
+        invoke: vi.fn().mockImplementation(() => {
+          toolSwarm.cancel();
+          return Promise.resolve({ content: '{"tool":"tab.create","params":{}}' });
+        }),
+      };
+      modelManager.createModel.mockImplementation((role: string) =>
+        role === 'subagent' ? model : undefined,
+      );
+
+      const result = await (toolSwarm as any).executorNode({
+        task: 'Task',
+        plan: ['Step'],
+        currentStep: 0,
+        stepResults: [],
+        finalResult: '',
+        context: {},
+        browserContext: {},
+      });
+
+      // Should stop after 1 tool call due to abort
+      expect(dispatcher.request).toHaveBeenCalledTimes(1);
+      expect(result.currentStep).toBe(1);
+    });
+  });
 });
