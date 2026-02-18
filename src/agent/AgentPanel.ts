@@ -25,6 +25,20 @@ export class AgentPanel {
       } else if (method === 'reflectionComplete') {
         const summary = (params as { summary?: string }).summary || 'Reflection complete.';
         this.chatView.addMessage('agent', summary);
+      } else if (method === 'swarmPlanReady') {
+        const { steps } = params as { steps: string[]; task: string };
+        this.chatView.addPlanMessage(steps);
+      } else if (method === 'swarmStepStarted') {
+        const { stepIndex } = params as { stepIndex: number };
+        this.chatView.updateStepStatus(stepIndex, 'active');
+      } else if (method === 'swarmToolExecuted') {
+        const { stepIndex, tool, ok } = params as { stepIndex: number; tool: string; ok: boolean };
+        this.chatView.addToolActivity(stepIndex, tool, ok ? 'ok' : 'failed');
+      } else if (method === 'swarmStepCompleted') {
+        const { stepIndex } = params as { stepIndex: number };
+        this.chatView.updateStepStatus(stepIndex, 'done');
+      } else if (method === 'swarmComplete') {
+        // Final result comes via the agentQuery response, nothing special needed here
       }
     });
   }
