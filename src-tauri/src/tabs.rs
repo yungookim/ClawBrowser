@@ -17,7 +17,6 @@ pub struct TabInfo {
 pub struct TabState {
     pub tabs: HashMap<String, TabInfo>,
     pub active_tab: Option<String>,
-    pub chrome_height: f64,
 }
 
 impl TabState {
@@ -25,7 +24,6 @@ impl TabState {
         Self {
             tabs: HashMap::new(),
             active_tab: None,
-            chrome_height: CHROME_HEIGHT,
         }
     }
 }
