@@ -13,6 +13,7 @@ import { SidecarAutomationRouter } from './automation/SidecarAutomationRouter';
 import { Vault } from './vault/Vault';
 import { VaultUI } from './vault/VaultUI';
 import { Wizard, type ModelRole } from './onboarding/Wizard';
+import { providerRequiresApiKey } from './shared/providerDefaults';
 
 async function bootstrap(): Promise<void> {
   const tabManager = new TabManager();
@@ -32,7 +33,7 @@ async function bootstrap(): Promise<void> {
   const hasLayout = Boolean(contentColumnEl && contentSpacerEl && appEl);
 
   // Initialize UI components
-  new TabBar(tabBarEl, tabManager);
+  const tabBar = new TabBar(tabBarEl, tabManager);
 
   // Sidecar bridge
   const sidecar = new SidecarBridge();
@@ -42,14 +43,20 @@ async function bootstrap(): Promise<void> {
     console.warn('Sidecar not available yet:', err);
   }
 
-  const vault = new Vault();
+  const vault = new Vault(0);
   const vaultUI = new VaultUI(vault);
   vaultUI.hide();
+  let vaultLocked = false;
+  let vaultRestoreTabId: string | null = null;
+  let onboardingActive = false;
+  let onboardingRestoreTabId: string | null = null;
+  let settingsPanel: SettingsPanel | null = null;
 
   const configureModelsFromVault = async (config: {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
   }) => {
     const roles: ModelRole[] = ['primary', 'secondary', 'subagent'];
+    const missingKeys: Array<{ role: ModelRole; provider: string; model: string }> = [];
     for (const role of roles) {
       const model = config.models?.[role];
       if (!model) continue;
@@ -58,6 +65,10 @@ async function bootstrap(): Promise<void> {
         apiKey = await vault.get(`apikey:${role}`);
       } catch {
         apiKey = undefined;
+      }
+      if (providerRequiresApiKey(model.provider) && !apiKey) {
+        missingKeys.push({ role, provider: model.provider, model: model.model });
+        continue;
       }
       await sidecar.configureModel(
         model.provider,
@@ -68,7 +79,50 @@ async function bootstrap(): Promise<void> {
         model.temperature,
       );
     }
+    if (missingKeys.length > 0) {
+      const summary = missingKeys
+        .map((entry) => `${entry.role} ${entry.provider}/${entry.model}`)
+        .join(', ');
+      console.warn(`Missing API keys for configured models: ${summary}`);
+    }
   };
+
+  const enterVaultLockedState = () => {
+    vaultLocked = true;
+    vaultRestoreTabId = tabManager.getActiveTabId() || tabManager.getTabs()[0]?.id || null;
+    tabBar.setLocked(true);
+    invoke('hide_all_tabs').catch((err) => {
+      console.warn('Failed to hide tabs for vault lock:', err);
+    });
+  };
+
+  const restoreVaultTabs = async () => {
+    vaultLocked = false;
+    tabBar.setLocked(false);
+    if (settingsPanel?.isVisible()) {
+      await invoke('hide_all_tabs');
+      vaultRestoreTabId = null;
+      return;
+    }
+    const tabs = tabManager.getTabs();
+    const tabIds = new Set(tabs.map((tab) => tab.id));
+    const preferredId = vaultRestoreTabId && tabIds.has(vaultRestoreTabId)
+      ? vaultRestoreTabId
+      : tabManager.getActiveTabId();
+    const fallbackId = tabs[0]?.id;
+    const targetId = (preferredId && tabIds.has(preferredId)) ? preferredId : fallbackId;
+
+    if (targetId) {
+      await tabManager.switchTab(targetId);
+    } else {
+      await tabManager.createTab('about:blank');
+    }
+    vaultRestoreTabId = null;
+  };
+
+  vault.onLock(() => {
+    enterVaultLockedState();
+  });
 
   const setVaultUnlockHandler = (config: {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
@@ -77,10 +131,54 @@ async function bootstrap(): Promise<void> {
       configureModelsFromVault(config).catch((err) => {
         console.warn('Failed to configure models from vault:', err);
       });
+      restoreVaultTabs().catch((err) => {
+        console.warn('Failed to restore tabs after vault unlock:', err);
+      });
     });
   };
 
+  const restoreContentTabs = async () => {
+    try {
+      if (settingsPanel?.isVisible()) {
+        if (tabManager.getTabs().length === 0) {
+          await tabManager.createTab('about:blank');
+        }
+        await invoke('hide_all_tabs');
+        onboardingRestoreTabId = null;
+        return;
+      }
+
+      const tabs = tabManager.getTabs();
+      const tabIds = new Set(tabs.map((tab) => tab.id));
+      const preferredId = onboardingRestoreTabId && tabIds.has(onboardingRestoreTabId)
+        ? onboardingRestoreTabId
+        : tabManager.getActiveTabId();
+      const fallbackId = tabs[0]?.id;
+      const targetId = (preferredId && tabIds.has(preferredId)) ? preferredId : fallbackId;
+
+      if (targetId) {
+        await tabManager.switchTab(targetId);
+      } else {
+        await tabManager.createTab('about:blank');
+      }
+    } catch (err) {
+      console.warn('Failed to restore tabs after onboarding:', err);
+    } finally {
+      onboardingRestoreTabId = null;
+    }
+  };
+
   const startSetupWizard = async ({ freshVault }: { freshVault: boolean }): Promise<void> => {
+    if (onboardingActive) {
+      return;
+    }
+    onboardingActive = true;
+    vaultUI.setMissingVaultData(false);
+    onboardingRestoreTabId = tabManager.getActiveTabId();
+    invoke('hide_all_tabs').catch((err) => {
+      console.warn('Failed to hide tabs for onboarding:', err);
+    });
+
     let existingVaultData: string | null = null;
     if (!freshVault) {
       try {
@@ -93,52 +191,69 @@ async function bootstrap(): Promise<void> {
 
     const wizard = new Wizard(vault, existingVaultData);
     wizard.setOnComplete(async (result) => {
-      const modelsPayload: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }> = {};
-      for (const role of Object.keys(result.models) as ModelRole[]) {
-        const model = result.models[role];
-        if (!model) continue;
-        modelsPayload[role] = {
-          provider: model.provider,
-          model: model.model,
-          baseUrl: model.baseUrl,
-          temperature: model.temperature,
-        };
-      }
-
-      await sidecar.updateConfig({
-        onboardingComplete: true,
-        workspacePath: result.workspacePath,
-        models: modelsPayload,
-      });
-
-      const encrypted = await vault.exportEncrypted();
-      await sidecar.saveVault(encrypted);
-      vaultUI.setEncryptedData(encrypted);
-
       try {
-        appConfig = await sidecar.getConfig();
-        if (appConfig) {
-          setVaultUnlockHandler(appConfig);
+        const modelsPayload: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }> = {};
+        for (const role of Object.keys(result.models) as ModelRole[]) {
+          const model = result.models[role];
+          if (!model) continue;
+          modelsPayload[role] = {
+            provider: model.provider,
+            model: model.model,
+            baseUrl: model.baseUrl,
+            temperature: model.temperature,
+          };
         }
-      } catch (err) {
-        console.warn('Failed to refresh config after onboarding:', err);
-      }
 
-      for (const role of Object.keys(result.models) as ModelRole[]) {
-        const model = result.models[role];
-        if (!model) continue;
-        await sidecar.configureModel(
-          model.provider,
-          model.model,
-          model.apiKey || undefined,
-          role,
-          model.baseUrl,
-          model.temperature,
-        );
+        await sidecar.updateConfig({
+          onboardingComplete: true,
+          workspacePath: result.workspacePath,
+          models: modelsPayload,
+        });
+
+        const encrypted = await vault.exportEncrypted();
+        await sidecar.saveVault(encrypted);
+        vaultUI.setEncryptedData(encrypted);
+        vaultUI.setMissingVaultData(false);
+
+        try {
+          appConfig = await sidecar.getConfig();
+          if (appConfig) {
+            setVaultUnlockHandler(appConfig);
+          }
+        } catch (err) {
+          console.warn('Failed to refresh config after onboarding:', err);
+        }
+
+        for (const role of Object.keys(result.models) as ModelRole[]) {
+          const model = result.models[role];
+          if (!model) continue;
+          await sidecar.configureModel(
+            model.provider,
+            model.model,
+            model.apiKey || undefined,
+            role,
+            model.baseUrl,
+            model.temperature,
+          );
+        }
+      } finally {
+        onboardingActive = false;
+        await restoreContentTabs();
       }
     });
     wizard.show();
   };
+
+  vaultUI.setOnRecover(() => {
+    const shouldRestart = window.confirm(
+      'Restart the setup wizard and create a new vault? This will overwrite your existing vault data.'
+    );
+    if (!shouldRestart) return;
+    vaultUI.hide();
+    startSetupWizard({ freshVault: true }).catch((err) => {
+      console.warn('Failed to start setup wizard:', err);
+    });
+  });
 
   let appConfig: {
     onboardingComplete: boolean;
@@ -158,11 +273,18 @@ async function bootstrap(): Promise<void> {
   } else if (appConfig) {
     try {
       const { data } = await sidecar.loadVault();
-      vaultUI.setEncryptedData(data);
+      if (data) {
+        vaultUI.setEncryptedData(data);
+        vaultUI.setMissingVaultData(false);
+      } else {
+        vaultUI.setMissingVaultData(true);
+      }
     } catch (err) {
       console.warn('Failed to load vault data:', err);
+      vaultUI.setMissingVaultData(true);
     }
     setVaultUnlockHandler(appConfig);
+    enterVaultLockedState();
     vaultUI.show();
   }
 
@@ -193,6 +315,14 @@ async function bootstrap(): Promise<void> {
   });
 
   await listen<{ tabId: string; url?: string; reason?: string }>('tab-open-request', (event) => {
+    if (onboardingActive) {
+      console.warn('Tab open request ignored during onboarding.');
+      return;
+    }
+    if (vaultLocked) {
+      console.warn('Tab open request ignored while vault locked.');
+      return;
+    }
     const { url, reason } = event.payload || {};
     if (!url) {
       console.warn('Tab open request missing URL');
@@ -204,9 +334,9 @@ async function bootstrap(): Promise<void> {
   });
 
   // Agent panel
-  const agentPanel = new AgentPanel(agentPanelEl, sidecar, tabManager);
+  new AgentPanel(agentPanelEl, sidecar, tabManager);
 
-  const settingsPanel = hasLayout && contentSpacerEl
+  settingsPanel = hasLayout && contentSpacerEl
     ? new SettingsPanel(contentSpacerEl, sidecar, tabManager, vault, () => {
       startSetupWizard({ freshVault: true }).catch((err) => {
         console.warn('Failed to start setup wizard:', err);
@@ -222,16 +352,6 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  let agentPanelOpen = false;
-  const setAgentPanelOpen = (open: boolean) => {
-    agentPanelOpen = open;
-    agentPanelEl.classList.toggle('open', open);
-  };
-  setAgentPanelOpen(false);
-  navBar.setAgentToggleHandler(() => {
-    setAgentPanelOpen(!agentPanelOpen);
-  });
-
   const registerShortcuts = () => {
     document.addEventListener('keydown', (event) => {
       if (event.defaultPrevented || event.repeat) return;
@@ -243,6 +363,9 @@ async function bootstrap(): Promise<void> {
 
       if (key === 't' && !event.shiftKey) {
         event.preventDefault();
+        if (onboardingActive || vaultLocked) {
+          return;
+        }
         tabManager.createTab('about:blank').catch((err) => {
           console.error('Failed to create tab:', err);
         });
@@ -362,7 +485,9 @@ async function bootstrap(): Promise<void> {
   });
 
   // Create initial tab
-  await tabManager.createTab('about:blank');
+  if (!onboardingActive && !vaultLocked && tabManager.getTabs().length === 0) {
+    await tabManager.createTab('about:blank');
+  }
 
   console.log('ClawBrowser chrome initialized');
 }

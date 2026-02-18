@@ -123,8 +123,7 @@ describe('SettingsPanel', () => {
       'gpt-4o',
       'sk-test',
       'secondary',
-      undefined,
-      undefined,
+      'https://api.openai.com/v1',
     );
 
     expect(bridge.updateConfig).toHaveBeenCalledWith({
@@ -132,8 +131,7 @@ describe('SettingsPanel', () => {
         secondary: {
           provider: 'openai',
           model: 'gpt-4o',
-          baseUrl: undefined,
-          temperature: undefined,
+          baseUrl: 'https://api.openai.com/v1',
         },
       },
     });

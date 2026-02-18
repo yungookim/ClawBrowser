@@ -13,7 +13,7 @@ Keep encryption and require a password to decrypt. Remove idle auto-lock (lock o
 
 ## Non-goals
 - Changing the vault format or encryption algorithms.
-- Persisting master password or auto-unlock.
+- Persisting passphrase or auto-unlock.
 - Destroying/recreating webviews on lock (only hide/show).
 
 ## Design

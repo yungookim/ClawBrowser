@@ -1,0 +1,74 @@
+.control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 var(--highlight), 0 8px 20px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.control.is-focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring), inset 0 1px 0 var(--highlight);
+}
+
+.control.is-disabled {
+  opacity: 0.6;
+}
+
+.control-field {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 12px;
+  width: 100%;
+  outline: none;
+  font-family: inherit;
+}
+
+.control-field::placeholder {
+  color: var(--text-muted);
+}
+
+.control-select .control-field {
+  cursor: pointer;
+  padding-right: 32px;
+}
+
+.control-combobox .control-field {
+  padding-right: 32px;
+}
+
+.control-caret {
+  position: absolute;
+  right: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.control-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 6px 16px rgba(0, 0, 0, 0.04);
+}
+
+.control-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.control-input::placeholder {
+  color: var(--text-muted);
+}

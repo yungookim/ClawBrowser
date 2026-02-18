@@ -8,6 +8,7 @@
   z-index: 1000;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
   transition: opacity 0.2s ease;
 }
 
@@ -24,6 +25,8 @@
   width: 380px;
   max-width: 90vw;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .vault-title {
@@ -37,6 +40,12 @@
   font-size: 13px;
   color: var(--text-muted);
   margin-bottom: 32px;
+}
+
+.vault-missing {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -12px 0 24px;
 }
 
 .vault-password {
@@ -75,6 +84,24 @@
 
 .vault-unlock-btn:hover {
   background: var(--contrast-hover);
+}
+
+.vault-recover-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.vault-recover-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .vault-error {

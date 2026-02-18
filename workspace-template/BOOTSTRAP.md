@@ -3,7 +3,7 @@
 ## Status
 
 - [ ] Workspace initialized from template
-- [ ] Master password set and vault created
+- [ ] Passphrase set and vault created
 - [ ] At least one model provider configured
 - [ ] Initial SOUL.md personality saved
 - [ ] First heartbeat recorded
@@ -15,7 +15,7 @@ On first launch, the onboarding wizard guides the user through:
 1. **Welcome** — Introduction to ClawBrowser
 2. **Workspace** — Import an existing workspace or start fresh
 3. **Model Setup** — Configure at least one AI model provider
-4. **Master Password** — Create vault encryption password
+4. **Passphrase** — Create vault encryption passphrase
 
 After onboarding completes, the agent performs initial boot and begins learning from interactions.
 

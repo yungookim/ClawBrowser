@@ -584,7 +584,7 @@ git commit -m "feat: add Rust sidecar lifecycle management"
 - Create: `src/vault/Vault.ts`
 - Test: `tests/frontend/vault.test.ts`
 
-PBKDF2 key derivation (600k iterations, SHA-256) from master password + random salt. AES-GCM-256 encryption. Store salt + encrypted entries as JSON via Tauri filesystem API. Auto-lock on idle timeout (configurable, default 5 min).
+PBKDF2 key derivation (600k iterations, SHA-256) from passphrase + random salt. AES-GCM-256 encryption. Store salt + encrypted entries as JSON via Tauri filesystem API. Auto-lock on idle timeout (configurable, default 5 min).
 
 Key methods: `unlock(password)`, `lock()`, `encrypt(plaintext)` -> base64, `decrypt(base64)` -> plaintext, `set(key, value)`, `get(key)`, `exportEncrypted()`, `importEncrypted(data)`.
 
@@ -803,7 +803,7 @@ git commit -m "feat: add voice input with Web Speech API and local Whisper"
 1. **Welcome** — "Get Started" button
 2. **Workspace Import** — Drag-and-drop zone for OpenClaw workspace folder, or "Start Fresh" button. Uses Tauri filesystem API to read dropped folder path.
 3. **Model Setup** — Provider dropdown (openai/anthropic/groq/ollama/llamacpp), model name input, API key input (not required for local). "Add" button to add multiple providers.
-4. **Master Password** — Password + confirm fields. Min 8 chars. On submit: unlock vault, store API keys encrypted, send model configs to sidecar.
+4. **Passphrase** — Password + confirm fields. Min 8 chars. On submit: unlock vault, store API keys encrypted, send model configs to sidecar.
 5. **Complete** — "Launch ClawBrowser" button removes overlay.
 
 All form values handled via DOM element `.value` properties. All display text set via `textContent`. No dynamic HTML from user input.

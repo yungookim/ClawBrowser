@@ -57,7 +57,7 @@ export class ModelManager {
       case 'openai':
         return new ChatOpenAI({
           modelName: config.model,
-          openAIApiKey: config.apiKey,
+          apiKey: config.apiKey,
           temperature,
           configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
         });
@@ -85,7 +85,7 @@ export class ModelManager {
           configuration: {
             baseURL: config.baseUrl || 'http://localhost:11434/v1',
           },
-          openAIApiKey: 'ollama', // Ollama doesn't need a real key
+          apiKey: 'ollama', // Ollama doesn't need a real key
         });
 
       case 'llamacpp':
@@ -96,7 +96,7 @@ export class ModelManager {
           configuration: {
             baseURL: config.baseUrl || 'http://localhost:8080/v1',
           },
-          openAIApiKey: 'llamacpp', // local, no key needed
+          apiKey: 'llamacpp', // local, no key needed
         });
 
       default:

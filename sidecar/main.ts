@@ -39,6 +39,11 @@ type Handler = (params: Record<string, unknown>) => Promise<unknown>;
 
 const startTime = Date.now();
 const handlers = new Map<string, Handler>();
+const HOSTED_PROVIDERS = new Set<Provider>(['openai', 'anthropic', 'groq']);
+
+function providerRequiresApiKey(provider: Provider): boolean {
+  return HOSTED_PROVIDERS.has(provider);
+}
 
 // Subsystem instances (initialized in boot())
 let modelManager: ModelManager;
@@ -124,6 +129,10 @@ async function boot(): Promise<void> {
   // Configure models from persisted config (no API keys at rest)
   for (const [role, config] of Object.entries(appConfig.models || {})) {
     if (!config) continue;
+    if (providerRequiresApiKey(config.provider)) {
+      console.warn(`[sidecar] Skipping ${role} model config until API key is provided.`);
+      continue;
+    }
     modelManager.configure({ ...config, role: role as ModelRole });
   }
 

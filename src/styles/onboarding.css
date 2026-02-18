@@ -8,6 +8,7 @@
   z-index: 900;
   opacity: 0;
   pointer-events: none;
+  overflow: hidden;
   transition: opacity 0.2s ease;
 }
 
@@ -21,6 +22,8 @@
   max-width: 90vw;
   max-height: 90vh;
   overflow-y: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .wizard-indicators {
@@ -76,28 +79,19 @@
   line-height: 1.5;
 }
 
+.wizard-tagline {
+  font-size: 26px;
+  line-height: 1.2;
+}
+
 .wizard-input {
   width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
   font-size: 13px;
-  padding: 10px 14px;
-  outline: none;
-  transition: border-color 0.15s ease;
+  font-family: inherit;
 }
 
-.wizard-input:focus {
-  border-color: var(--accent);
-}
-
-.wizard-input::placeholder {
-  color: var(--text-muted);
-}
-
-select.wizard-input {
-  cursor: pointer;
+.wizard-control {
+  width: 100%;
 }
 
 .wizard-btn {
@@ -133,22 +127,6 @@ select.wizard-input {
   justify-content: space-between;
   gap: 12px;
   margin-top: 8px;
-}
-
-.wizard-dropzone {
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 32px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-  transition: border-color 0.15s ease, background 0.15s ease;
-  cursor: pointer;
-}
-
-.wizard-dropzone.dragover {
-  border-color: var(--accent);
-  background: var(--highlight);
 }
 
 .wizard-model-form {
@@ -199,6 +177,29 @@ select.wizard-input {
   padding: 8px 12px;
   font-size: 12px;
   color: var(--text);
+}
+
+.wizard-role-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wizard-role-note {
+  display: flex;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.wizard-role-note strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .wizard-error {

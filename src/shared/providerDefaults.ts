@@ -17,17 +17,17 @@ const PROVIDER_DEFAULTS: Record<ProviderId, ProviderDefaults> = {
   openai: {
     baseUrl: 'https://api.openai.com/v1',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'required',
+    apiKeyPlaceholder: 'API Key (required)',
   },
   anthropic: {
     baseUrl: 'https://api.anthropic.com',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'required',
+    apiKeyPlaceholder: 'API Key (required)',
   },
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
     apiKeyRequired: true,
-    apiKeyPlaceholder: 'required',
+    apiKeyPlaceholder: 'API Key (required)',
   },
   ollama: {
     baseUrl: 'http://localhost:11434/v1/',

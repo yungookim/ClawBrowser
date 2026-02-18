@@ -63,23 +63,12 @@ describe('Wizard', () => {
     findButton('Get Started', getVisibleStep()).click();
     expect(getVisibleStepIndex()).toBe(1);
 
-    const dropZone = document.querySelector('.wizard-dropzone') as HTMLElement;
-    const dropEvent = new Event('drop', { bubbles: true }) as any;
-    dropEvent.dataTransfer = {
-      files: [{ name: 'workspace', path: '/tmp/workspace' }],
-    };
-    dropZone.dispatchEvent(dropEvent);
-    expect(dropZone.textContent).toContain('/tmp/workspace');
-
-    findButton('Next', getVisibleStep()).click();
-    expect(getVisibleStepIndex()).toBe(2);
-
     const modelStep = getVisibleStep();
     const errorEl = modelStep.querySelector('.wizard-error') as HTMLElement;
 
     // No primary model yet: should stay on model step
     findButton('Next', modelStep).click();
-    expect(getVisibleStepIndex()).toBe(2);
+    expect(getVisibleStepIndex()).toBe(1);
     expect(errorEl.textContent).toContain('Primary model is required');
 
     const primarySection = getModelSection('Primary model');
@@ -97,10 +86,10 @@ describe('Wizard', () => {
     });
 
     findButton('Next', getVisibleStep()).click();
-    expect(getVisibleStepIndex()).toBe(3);
+    expect(getVisibleStepIndex()).toBe(2);
 
-    const pwInput = document.querySelector('input[placeholder^="Master password"]') as HTMLInputElement;
-    const confirmInput = document.querySelector('input[placeholder^="Confirm password"]') as HTMLInputElement;
+    const pwInput = document.querySelector('input[placeholder^="Passphrase"]') as HTMLInputElement;
+    const confirmInput = document.querySelector('input[placeholder^="Confirm passphrase"]') as HTMLInputElement;
     const pwError = document.querySelector('.wizard-error') as HTMLElement;
 
     pwInput.value = 'short';
@@ -127,14 +116,13 @@ describe('Wizard', () => {
     expect(overlay.classList.contains('visible')).toBe(false);
 
     expect(onComplete).toHaveBeenCalledWith({
-      workspacePath: '/tmp/workspace',
+      workspacePath: null,
       models: {
         primary: {
           provider: 'openai',
           model: 'gpt-4o',
           apiKey: 'sk-primary',
           baseUrl: undefined,
-          temperature: undefined,
           role: 'primary',
         },
         secondary: {
@@ -142,7 +130,6 @@ describe('Wizard', () => {
           model: 'llama-3.3-70b',
           apiKey: 'sk-secondary',
           baseUrl: undefined,
-          temperature: undefined,
           role: 'secondary',
         },
         subagent: null,
@@ -159,9 +146,7 @@ describe('Wizard', () => {
 
     wizard.show();
     findButton('Get Started', getVisibleStep()).click();
-
-    findButton('Start Fresh', getVisibleStep()).click();
-    expect(getVisibleStepIndex()).toBe(2);
+    expect(getVisibleStepIndex()).toBe(1);
 
     const primarySection = getModelSection('Primary model');
     fillModelSection(primarySection, {
@@ -170,10 +155,10 @@ describe('Wizard', () => {
     });
 
     findButton('Next', getVisibleStep()).click();
-    expect(getVisibleStepIndex()).toBe(3);
+    expect(getVisibleStepIndex()).toBe(2);
 
-    const pwInput = document.querySelector('input[placeholder^="Master password"]') as HTMLInputElement;
-    const confirmInput = document.querySelector('input[placeholder^="Confirm password"]') as HTMLInputElement;
+    const pwInput = document.querySelector('input[placeholder^="Passphrase"]') as HTMLInputElement;
+    const confirmInput = document.querySelector('input[placeholder^="Confirm passphrase"]') as HTMLInputElement;
 
     pwInput.value = 'password123';
     confirmInput.value = 'password123';

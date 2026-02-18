@@ -1,4 +1,8 @@
 import { applyProviderDefaults, providerRequiresApiKey } from '../shared/providerDefaults';
+import modelCatalog from '../shared/modelCatalog.json';
+import { Combobox } from '../ui/Combobox';
+import { Dropdown } from '../ui/Dropdown';
+import { MatrixBackground } from '../ui/MatrixBackground';
 import { Vault } from '../vault/Vault';
 
 export type ModelRole = 'primary' | 'secondary' | 'subagent';
@@ -25,13 +29,16 @@ type ModelInputs = {
   model: HTMLInputElement;
   apiKey: HTMLInputElement;
   baseUrl: HTMLInputElement;
-  temperature: HTMLInputElement;
+  combobox: Combobox;
 };
+
+const MODEL_CATALOG = modelCatalog as Record<string, string[]>;
 
 export class Wizard {
   private overlay: HTMLElement;
   private vault: Vault;
   private existingVaultData: string | null;
+  private background: MatrixBackground;
   private currentStep = 0;
   private steps: HTMLElement[] = [];
   private models: Record<ModelRole, ModelConfig | null> = {
@@ -47,6 +54,7 @@ export class Wizard {
     this.vault = vault;
     this.existingVaultData = existingVaultData || null;
     this.overlay = this.build();
+    this.background = new MatrixBackground(this.overlay);
     document.body.appendChild(this.overlay);
   }
 
@@ -56,12 +64,14 @@ export class Wizard {
 
   show(): void {
     this.overlay.classList.add('visible');
+    this.background.start();
     this.currentStep = 0;
     this.showStep(0);
   }
 
   hide(): void {
     this.overlay.classList.remove('visible');
+    this.background.stop();
   }
 
   private build(): HTMLElement {
@@ -74,7 +84,7 @@ export class Wizard {
     // Step indicators
     const indicators = document.createElement('div');
     indicators.className = 'wizard-indicators';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       const dot = document.createElement('div');
       dot.className = 'wizard-dot';
       dot.dataset.step = String(i);
@@ -85,7 +95,6 @@ export class Wizard {
     // Build all steps
     this.steps = [
       this.buildWelcomeStep(),
-      this.buildWorkspaceStep(),
       this.buildModelStep(),
       this.buildPasswordStep(),
     ];
@@ -122,8 +131,8 @@ export class Wizard {
     step.appendChild(title);
 
     const desc = document.createElement('p');
-    desc.className = 'wizard-desc';
-    desc.textContent = 'A lightweight AI-powered browser with persistent memory, multi-model support, and encrypted local storage.';
+    desc.className = 'wizard-desc wizard-tagline';
+    desc.textContent = 'The smartest child of openclaw.';
     step.appendChild(desc);
 
     const btn = document.createElement('button');
@@ -132,68 +141,6 @@ export class Wizard {
     btn.addEventListener('click', () => this.showStep(1));
     step.appendChild(btn);
 
-    return step;
-  }
-
-  private buildWorkspaceStep(): HTMLElement {
-    const step = document.createElement('div');
-    step.className = 'wizard-step';
-
-    const title = document.createElement('h2');
-    title.className = 'wizard-title';
-    title.textContent = 'Workspace Setup';
-    step.appendChild(title);
-
-    const desc = document.createElement('p');
-    desc.className = 'wizard-desc';
-    desc.textContent = 'Import an existing workspace folder or start fresh.';
-    step.appendChild(desc);
-
-    // Drop zone
-    const dropZone = document.createElement('div');
-    dropZone.className = 'wizard-dropzone';
-    const dropLabel = document.createElement('span');
-    dropLabel.textContent = 'Drag and drop a workspace folder here';
-    dropZone.appendChild(dropLabel);
-
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    });
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.classList.remove('dragover');
-    });
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      if (e.dataTransfer?.files.length) {
-        // In Tauri, dropped files have a path property
-        const file = e.dataTransfer.files[0];
-        this.workspacePath = (file as File & { path?: string }).path || file.name;
-        dropLabel.textContent = `Selected: ${this.workspacePath}`;
-      }
-    });
-    step.appendChild(dropZone);
-
-    const btnRow = document.createElement('div');
-    btnRow.className = 'wizard-btn-row';
-
-    const freshBtn = document.createElement('button');
-    freshBtn.className = 'wizard-btn secondary';
-    freshBtn.textContent = 'Start Fresh';
-    freshBtn.addEventListener('click', () => {
-      this.workspacePath = null;
-      this.showStep(2);
-    });
-    btnRow.appendChild(freshBtn);
-
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'wizard-btn primary';
-    nextBtn.textContent = 'Next';
-    nextBtn.addEventListener('click', () => this.showStep(2));
-    btnRow.appendChild(nextBtn);
-
-    step.appendChild(btnRow);
     return step;
   }
 
@@ -214,59 +161,77 @@ export class Wizard {
     }
     section.appendChild(header);
 
-    const providerSelect = document.createElement('select');
-    providerSelect.className = 'wizard-input';
     const providers = ['openai', 'anthropic', 'groq', 'ollama', 'llamacpp'];
-    for (const p of providers) {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      providerSelect.appendChild(opt);
-    }
-    section.appendChild(providerSelect);
+    const providerDropdown = new Dropdown({
+      options: providers.map((provider) => ({ value: provider, label: provider })),
+      className: 'wizard-control',
+      ariaLabel: `${label} provider`,
+    });
+    section.appendChild(providerDropdown.element);
 
-    const modelInput = document.createElement('input');
-    modelInput.className = 'wizard-input';
-    modelInput.type = 'text';
-    modelInput.placeholder = 'Model name (e.g. gpt-5.2)';
-    section.appendChild(modelInput);
+    const modelCombobox = new Combobox({
+      options: [],
+      placeholder: 'Model name (select or type)',
+      className: 'wizard-control',
+      ariaLabel: `${label} model`,
+    });
+    section.appendChild(modelCombobox.element);
+
+    const providerSelect = providerDropdown.field;
+    const modelInput = modelCombobox.field;
 
     const apiKeyInput = document.createElement('input');
-    apiKeyInput.className = 'wizard-input';
+    apiKeyInput.className = 'wizard-input control-input';
     apiKeyInput.type = 'password';
     apiKeyInput.placeholder = 'API key (optional for local models)';
     section.appendChild(apiKeyInput);
 
     const baseUrlInput = document.createElement('input');
-    baseUrlInput.className = 'wizard-input';
+    baseUrlInput.className = 'wizard-input control-input';
     baseUrlInput.type = 'text';
     baseUrlInput.placeholder = 'Base URL (optional for local providers)';
     section.appendChild(baseUrlInput);
-
-    const temperatureInput = document.createElement('input');
-    temperatureInput.className = 'wizard-input';
-    temperatureInput.type = 'number';
-    temperatureInput.min = '0';
-    temperatureInput.max = '2';
-    temperatureInput.step = '0.1';
-    temperatureInput.placeholder = 'Temperature (optional)';
-    section.appendChild(temperatureInput);
 
     this.modelInputs[role] = {
       provider: providerSelect,
       model: modelInput,
       apiKey: apiKeyInput,
       baseUrl: baseUrlInput,
-      temperature: temperatureInput,
+      combobox: modelCombobox,
     };
 
     providerSelect.addEventListener('change', () => {
       applyProviderDefaults(this.modelInputs[role], providerSelect.value, { force: true });
+      this.updateModelOptions(role);
     });
 
     applyProviderDefaults(this.modelInputs[role], providerSelect.value, { force: true });
+    this.updateModelOptions(role);
 
     return section;
+  }
+
+  private updateModelOptions(role: ModelRole): void {
+    const inputs = this.modelInputs[role];
+    if (!inputs) return;
+    const provider = inputs.provider.value;
+    const models = MODEL_CATALOG[provider] || [];
+    inputs.combobox.setOptions(models);
+  }
+
+  private buildRoleNote(titleText: string, bodyText: string): HTMLElement {
+    const note = document.createElement('div');
+    note.className = 'wizard-role-note';
+
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    note.appendChild(title);
+
+    const body = document.createElement('span');
+    body.textContent = bodyText;
+    note.appendChild(body);
+
+    return note;
   }
 
   private buildModelStep(): HTMLElement {
@@ -282,6 +247,19 @@ export class Wizard {
     desc.className = 'wizard-desc';
     desc.textContent = 'Configure the primary, secondary, and subagent models.';
     step.appendChild(desc);
+
+    const roleNotes = document.createElement('div');
+    roleNotes.className = 'wizard-role-notes';
+    roleNotes.appendChild(
+      this.buildRoleNote('Primary', 'Main model for most tasks and reasoning.'),
+    );
+    roleNotes.appendChild(
+      this.buildRoleNote('Secondary', 'Backup or specialized model for follow-up work.'),
+    );
+    roleNotes.appendChild(
+      this.buildRoleNote('Subagent', 'Delegate for parallel tasks and subtasks.'),
+    );
+    step.appendChild(roleNotes);
 
     const form = document.createElement('div');
     form.className = 'wizard-model-form';
@@ -302,7 +280,7 @@ export class Wizard {
     const backBtn = document.createElement('button');
     backBtn.className = 'wizard-btn secondary';
     backBtn.textContent = 'Back';
-    backBtn.addEventListener('click', () => this.showStep(1));
+    backBtn.addEventListener('click', () => this.showStep(0));
     btnRow.appendChild(backBtn);
 
     const nextBtn = document.createElement('button');
@@ -312,7 +290,7 @@ export class Wizard {
       const collected = this.collectModels(errorEl);
       if (!collected) return;
       this.models = collected;
-      this.showStep(3);
+      this.showStep(2);
     });
     btnRow.appendChild(nextBtn);
 
@@ -342,8 +320,6 @@ export class Wizard {
       const model = inputs.model.value.trim();
       const apiKey = inputs.apiKey.value.trim();
       const baseUrl = inputs.baseUrl.value.trim();
-      const temperatureRaw = inputs.temperature.value.trim();
-      const temperature = temperatureRaw ? Number(temperatureRaw) : undefined;
 
       if (role === 'primary' && !model) {
         errorEl.textContent = 'Primary model is required.';
@@ -365,7 +341,6 @@ export class Wizard {
         model,
         apiKey,
         baseUrl: baseUrl || undefined,
-        temperature: Number.isFinite(temperature) ? temperature : undefined,
         role,
       };
     }
@@ -379,24 +354,24 @@ export class Wizard {
 
     const title = document.createElement('h2');
     title.className = 'wizard-title';
-    title.textContent = 'Master Password';
+    title.textContent = 'Passphrase';
     step.appendChild(title);
 
     const desc = document.createElement('p');
     desc.className = 'wizard-desc';
-    desc.textContent = 'Create a master password to encrypt your API keys and sensitive data.';
+    desc.textContent = 'Create a passphrase to encrypt your API keys and sensitive data.';
     step.appendChild(desc);
 
     const pwInput = document.createElement('input');
-    pwInput.className = 'wizard-input';
+    pwInput.className = 'wizard-input control-input';
     pwInput.type = 'password';
-    pwInput.placeholder = 'Master password (min 8 characters)';
+    pwInput.placeholder = 'Passphrase (min 8 characters)';
     step.appendChild(pwInput);
 
     const confirmInput = document.createElement('input');
-    confirmInput.className = 'wizard-input';
+    confirmInput.className = 'wizard-input control-input';
     confirmInput.type = 'password';
-    confirmInput.placeholder = 'Confirm password';
+    confirmInput.placeholder = 'Confirm passphrase';
     step.appendChild(confirmInput);
 
     const errorEl = document.createElement('p');
@@ -409,7 +384,7 @@ export class Wizard {
     const backBtn = document.createElement('button');
     backBtn.className = 'wizard-btn secondary';
     backBtn.textContent = 'Back';
-    backBtn.addEventListener('click', () => this.showStep(2));
+    backBtn.addEventListener('click', () => this.showStep(1));
     btnRow.appendChild(backBtn);
 
     const finishBtn = document.createElement('button');

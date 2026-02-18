@@ -47,7 +47,7 @@ Implement the onboarding flow and model role configuration (primary/secondary/su
 1. Welcome
 2. Workspace import or start fresh
 3. Model setup for primary/secondary/subagent
-4. Master password (create vault, store API keys)
+4. Passphrase (create vault, store API keys)
 5. Complete
 
 Behavior:

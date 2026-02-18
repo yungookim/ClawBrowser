@@ -17,7 +17,7 @@ Status: DRAFT
 - Full custom autocomplete component (native combobox only).
 
 ## UX Flow
-- Wizard steps: Welcome → Model Configuration → Master Password.
+- Wizard steps: Welcome → Model Configuration → Passphrase.
 - Step indicators updated to 3 dots.
 - Model Configuration includes short role explanations:
   - Primary: main model for most tasks.

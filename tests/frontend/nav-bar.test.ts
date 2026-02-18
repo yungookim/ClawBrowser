@@ -39,11 +39,13 @@ describe('NavBar', () => {
     const backBtn = container.querySelector('button[title="Back"]') as HTMLButtonElement;
     const forwardBtn = container.querySelector('button[title="Forward"]') as HTMLButtonElement;
     const refreshBtn = container.querySelector('button[title="Refresh"]') as HTMLButtonElement;
+    const agentToggle = container.querySelector('.agent-toggle');
 
     expect(urlInput.value).toBe('https://example.com');
     expect(backBtn.disabled).toBe(false);
     expect(forwardBtn.disabled).toBe(true);
     expect(refreshBtn.disabled).toBe(false);
+    expect(agentToggle).toBeNull();
 
     activeTab = { url: 'about:blank' };
     handlers[0]?.([], null);
@@ -64,7 +66,7 @@ describe('NavBar', () => {
   });
 
   it('navigates on Enter and wires button actions', () => {
-    const nav = new NavBar(container, tabManager);
+    new NavBar(container, tabManager);
     const urlInput = container.querySelector('.url-input') as HTMLInputElement;
 
     urlInput.value = 'example.com';
@@ -81,11 +83,5 @@ describe('NavBar', () => {
     const forwardBtn = container.querySelector('button[title="Forward"]') as HTMLButtonElement;
     forwardBtn.click();
     expect(tabManager.goForward).toHaveBeenCalledTimes(1);
-
-    const toggleSpy = vi.fn();
-    nav.setAgentToggleHandler(toggleSpy);
-    const toggleBtn = container.querySelector('button.agent-toggle') as HTMLButtonElement;
-    toggleBtn.click();
-    expect(toggleSpy).toHaveBeenCalledTimes(1);
   });
 });

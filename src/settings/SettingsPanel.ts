@@ -2,7 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { SidecarBridge } from '../agent/SidecarBridge';
 import { applyProviderDefaults, providerRequiresApiKey } from '../shared/providerDefaults';
+import modelCatalog from '../shared/modelCatalog.json';
 import { TabManager } from '../tabs/TabManager';
+import { Combobox } from '../ui/Combobox';
+import { Dropdown } from '../ui/Dropdown';
 import { Vault } from '../vault/Vault';
 
 type ModelConfig = {
@@ -38,6 +41,8 @@ type StatusResponse = {
   memoryStatus?: { totalDocuments: number; needsEmbedding: number } | null;
 };
 
+const MODEL_CATALOG = modelCatalog as Record<string, string[]>;
+
 export class SettingsPanel {
   private container: HTMLElement;
   private bridge: SidecarBridge;
@@ -58,10 +63,14 @@ export class SettingsPanel {
   private statusRowsEl!: HTMLElement;
   private memoryQueryInput!: HTMLInputElement;
   private modelForm!: HTMLFormElement;
+  private modelProviderDropdown!: Dropdown;
+  private modelRoleDropdown!: Dropdown;
+  private modelCombobox!: Combobox;
   private modelProviderSelect!: HTMLSelectElement;
   private modelInput!: HTMLInputElement;
   private modelApiKeyInput!: HTMLInputElement;
   private modelBaseUrlInput!: HTMLInputElement;
+  private modelRoleSelect!: HTMLSelectElement;
   private allowlistForm!: HTMLFormElement;
   private allowlistListEl!: HTMLElement;
   private allowlistCommandInput!: HTMLInputElement;
@@ -141,7 +150,7 @@ export class SettingsPanel {
       <div class="settings-shell">
         <header class="settings-hero">
           <div class="settings-hero-copy">
-            <div class="settings-kicker">ClawBrowser Control</div>
+            <div class="settings-kicker">smartest child of openclaw</div>
             <h1 class="settings-title">Settings</h1>
             <p class="settings-subtitle">Configure models, automation, memory, logs, and system status from one console.</p>
           </div>
@@ -160,17 +169,11 @@ export class SettingsPanel {
             <form class="settings-form" data-form="model">
               <label class="settings-field">
                 Provider
-                <select class="settings-select" name="provider" required>
-                  <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="groq">Groq</option>
-                  <option value="ollama">Ollama</option>
-                  <option value="llamacpp">llama.cpp</option>
-                </select>
+                <div class="settings-control" data-control="model-provider"></div>
               </label>
               <label class="settings-field">
                 Model
-                <input class="settings-input" name="model" placeholder="gpt-5.2" required />
+                <div class="settings-control" data-control="model-input"></div>
               </label>
               <label class="settings-field">
                 API Key
@@ -182,15 +185,7 @@ export class SettingsPanel {
               </label>
               <label class="settings-field">
                 Role
-                <select class="settings-select" name="role">
-                  <option value="primary">Primary</option>
-                  <option value="secondary">Secondary</option>
-                  <option value="subagent">Subagent</option>
-                </select>
-              </label>
-              <label class="settings-field">
-                Temperature
-                <input class="settings-input" name="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.7" />
+                <div class="settings-control" data-control="model-role"></div>
               </label>
               <button class="settings-btn solid" type="submit">Save Model</button>
             </form>
@@ -308,6 +303,50 @@ export class SettingsPanel {
       </div>
     `;
 
+    const providerSlot = root.querySelector('[data-control="model-provider"]') as HTMLElement;
+    const modelSlot = root.querySelector('[data-control="model-input"]') as HTMLElement;
+    const roleSlot = root.querySelector('[data-control="model-role"]') as HTMLElement;
+
+    this.modelProviderDropdown = new Dropdown({
+      options: [
+        { value: 'openai', label: 'OpenAI' },
+        { value: 'anthropic', label: 'Anthropic' },
+        { value: 'groq', label: 'Groq' },
+        { value: 'ollama', label: 'Ollama' },
+        { value: 'llamacpp', label: 'llama.cpp' },
+      ],
+      name: 'provider',
+      required: true,
+      className: 'settings-control-field',
+      ariaLabel: 'Provider',
+    });
+    providerSlot.appendChild(this.modelProviderDropdown.element);
+    this.modelProviderSelect = this.modelProviderDropdown.field;
+
+    this.modelCombobox = new Combobox({
+      options: [],
+      name: 'model',
+      required: true,
+      placeholder: 'gpt-5.2',
+      className: 'settings-control-field',
+      ariaLabel: 'Model',
+    });
+    modelSlot.appendChild(this.modelCombobox.element);
+    this.modelInput = this.modelCombobox.field;
+
+    this.modelRoleDropdown = new Dropdown({
+      options: [
+        { value: 'primary', label: 'Primary' },
+        { value: 'secondary', label: 'Secondary' },
+        { value: 'subagent', label: 'Subagent' },
+      ],
+      name: 'role',
+      className: 'settings-control-field',
+      ariaLabel: 'Role',
+    });
+    roleSlot.appendChild(this.modelRoleDropdown.element);
+    this.modelRoleSelect = this.modelRoleDropdown.field;
+
     this.bannerEl = root.querySelector('[data-role="status-banner"]') as HTMLElement;
     this.modelListEl = root.querySelector('[data-role="model-list"]') as HTMLElement;
     this.memoryFilesEl = root.querySelector('[data-role="memory-files"]') as HTMLElement;
@@ -318,8 +357,6 @@ export class SettingsPanel {
     this.statusRowsEl = root.querySelector('[data-role="status-rows"]') as HTMLElement;
     this.memoryQueryInput = root.querySelector('[data-role="memory-query"]') as HTMLInputElement;
     this.modelForm = root.querySelector('[data-form="model"]') as HTMLFormElement;
-    this.modelProviderSelect = this.modelForm.querySelector('select[name="provider"]') as HTMLSelectElement;
-    this.modelInput = this.modelForm.querySelector('input[name="model"]') as HTMLInputElement;
     this.modelApiKeyInput = this.modelForm.querySelector('input[name="apiKey"]') as HTMLInputElement;
     this.modelBaseUrlInput = this.modelForm.querySelector('input[name="baseUrl"]') as HTMLInputElement;
     this.allowlistForm = root.querySelector('[data-form="allowlist"]') as HTMLFormElement;
@@ -380,6 +417,7 @@ export class SettingsPanel {
 
     this.modelProviderSelect.addEventListener('change', () => {
       this.applyModelDefaults();
+      this.updateModelOptions();
     });
 
     this.modelForm.addEventListener('submit', (event) => {
@@ -398,6 +436,7 @@ export class SettingsPanel {
     });
 
     this.applyModelDefaults();
+    this.updateModelOptions();
 
     return root;
   }
@@ -482,8 +521,6 @@ export class SettingsPanel {
     const apiKey = String(formData.get('apiKey') || '').trim();
     const baseUrl = String(formData.get('baseUrl') || '').trim();
     const role = String(formData.get('role') || 'primary');
-    const temperatureRaw = String(formData.get('temperature') || '').trim();
-    const temperature = temperatureRaw ? Number(temperatureRaw) : undefined;
 
     if (!provider || !model) {
       this.setBanner('Provider and model are required.', 'warn');
@@ -502,7 +539,6 @@ export class SettingsPanel {
         apiKey || undefined,
         role,
         baseUrl || undefined,
-        Number.isFinite(temperature) ? temperature : undefined,
       );
 
       await this.bridge.updateConfig({
@@ -511,7 +547,6 @@ export class SettingsPanel {
             provider,
             model,
             baseUrl: baseUrl || undefined,
-            temperature: Number.isFinite(temperature) ? temperature : undefined,
           },
         },
       });
@@ -549,6 +584,12 @@ export class SettingsPanel {
     );
   }
 
+  private updateModelOptions(): void {
+    const provider = this.modelProviderSelect.value;
+    const models = MODEL_CATALOG[provider] || [];
+    this.modelCombobox.setOptions(models);
+  }
+
   private renderModels(models: ModelConfig[]): void {
     this.modelListEl.textContent = '';
     if (!models || models.length === 0) {
@@ -569,12 +610,7 @@ export class SettingsPanel {
       left.appendChild(document.createElement('br'));
       left.appendChild(meta);
 
-      const right = document.createElement('div');
-      right.className = 'settings-mono';
-      right.textContent = model.temperature !== undefined ? `temp ${model.temperature}` : 'temp default';
-
       item.appendChild(left);
-      item.appendChild(right);
       this.modelListEl.appendChild(item);
     });
   }

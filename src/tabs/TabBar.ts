@@ -3,6 +3,7 @@ import { TabManager, Tab } from './TabManager';
 export class TabBar {
   private container: HTMLElement;
   private tabManager: TabManager;
+  private locked = false;
 
   constructor(container: HTMLElement, tabManager: TabManager) {
     this.container = container;
@@ -14,6 +15,12 @@ export class TabBar {
     });
 
     // Initial render
+    this.render(this.tabManager.getTabs(), this.tabManager.getActiveTabId());
+  }
+
+  setLocked(locked: boolean): void {
+    if (this.locked === locked) return;
+    this.locked = locked;
     this.render(this.tabManager.getTabs(), this.tabManager.getActiveTabId());
   }
 
@@ -44,11 +51,13 @@ export class TabBar {
       closeBtn.title = 'Close tab';
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (this.locked) return;
         this.tabManager.closeTab(tab.id);
       });
       tabEl.appendChild(closeBtn);
 
       tabEl.addEventListener('click', () => {
+        if (this.locked) return;
         this.tabManager.switchTab(tab.id);
       });
 
@@ -62,6 +71,7 @@ export class TabBar {
     newTabBtn.title = 'New tab';
     newTabBtn.style.setProperty('-webkit-app-region', 'no-drag');
     newTabBtn.addEventListener('click', () => {
+      if (this.locked) return;
       this.tabManager.createTab('about:blank');
     });
     tabsContainer.appendChild(newTabBtn);

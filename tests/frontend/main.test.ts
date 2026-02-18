@@ -13,13 +13,15 @@ const mocks = vi.hoisted(() => ({
   sidecarSaveVault: vi.fn(),
   sidecarUpdateConfig: vi.fn(),
   sidecarConfigureModel: vi.fn(),
-  agentToggleHandler: null as null | (() => void),
   voiceOnResult: null as null | ((transcript: string) => void),
   vaultUIShow: vi.fn(),
   vaultUIHide: vi.fn(),
   vaultUISetEncryptedData: vi.fn(),
   vaultUISetOnUnlock: vi.fn(),
+  vaultUISetMissingVaultData: vi.fn(),
+  vaultUISetOnRecover: vi.fn(),
   vaultOnUnlock: null as null | (() => void),
+  vaultOnRecover: null as null | (() => void),
   wizardShow: vi.fn(),
   wizardSetOnComplete: vi.fn(),
   wizardOnComplete: null as null | ((result: any) => void),
@@ -46,6 +48,8 @@ vi.mock('../../src/tabs/TabManager', () => ({
   TabManager: class {
     init = mocks.tabManagerInit;
     createTab = mocks.createTab;
+    switchTab = vi.fn();
+    closeTab = vi.fn();
     getTabs = vi.fn().mockReturnValue([]);
     getActiveTabId = vi.fn().mockReturnValue(null);
     getActiveTab = vi.fn().mockReturnValue(null);
@@ -67,9 +71,6 @@ vi.mock('../../src/tabs/TabBar', () => ({
 vi.mock('../../src/navigation/NavBar', () => ({
   NavBar: class {
     constructor(_el: HTMLElement, _tm: unknown) {}
-    setAgentToggleHandler(handler: () => void): void {
-      mocks.agentToggleHandler = handler;
-    }
   },
 }));
 
@@ -119,9 +120,14 @@ vi.mock('../../src/vault/VaultUI', () => ({
     show(): void { mocks.vaultUIShow(); }
     hide(): void { mocks.vaultUIHide(); }
     setEncryptedData(data: string | null): void { mocks.vaultUISetEncryptedData(data); }
+    setMissingVaultData(missing: boolean): void { mocks.vaultUISetMissingVaultData(missing); }
     setOnUnlock(handler: () => void): void {
       mocks.vaultUISetOnUnlock();
       mocks.vaultOnUnlock = handler;
+    }
+    setOnRecover(handler: () => void): void {
+      mocks.vaultUISetOnRecover();
+      mocks.vaultOnRecover = handler;
     }
   },
 }));
@@ -164,10 +170,10 @@ describe('main bootstrap', () => {
     mocks.vaultSet.mockResolvedValue(undefined);
     mocks.vaultExport.mockResolvedValue('encrypted');
     mocks.vaultImport.mockResolvedValue(undefined);
-    mocks.agentToggleHandler = null;
     mocks.voiceOnResult = null;
     mocks.resizeHandler = null;
     mocks.vaultOnUnlock = null;
+    mocks.vaultOnRecover = null;
   });
 
   it('initializes UI and wires handlers', async () => {
@@ -175,14 +181,9 @@ describe('main bootstrap', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     expect(mocks.tabManagerInit).toHaveBeenCalledTimes(1);
-    expect(mocks.createTab).toHaveBeenCalledWith('about:blank');
+    expect(mocks.createTab).not.toHaveBeenCalled();
     expect(mocks.sidecarStart).toHaveBeenCalledTimes(1);
     expect(mocks.wizardShow).toHaveBeenCalledTimes(1);
-
-    const panel = document.getElementById('agent-panel') as HTMLElement;
-    expect(panel.classList.contains('open')).toBe(false);
-    mocks.agentToggleHandler?.();
-    expect(panel.classList.contains('open')).toBe(true);
 
     mocks.voiceOnResult?.('hello');
     expect(mocks.sidecarAgentQuery).toHaveBeenCalledWith('hello');

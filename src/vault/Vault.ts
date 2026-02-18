@@ -14,7 +14,7 @@ export class Vault {
   private entries: Map<string, string> = new Map();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private idleTimeoutMs: number;
-  private onLockCallback: (() => void) | null = null;
+  private onLockCallbacks: Array<() => void> = [];
   private lastExported: string | null = null;
 
   constructor(idleTimeoutMs: number = 5 * 60 * 1000) {
@@ -26,7 +26,7 @@ export class Vault {
   }
 
   onLock(callback: () => void): void {
-    this.onLockCallback = callback;
+    this.onLockCallbacks.push(callback);
   }
 
   async unlock(password: string, existingData?: string): Promise<void> {
@@ -67,8 +67,8 @@ export class Vault {
     this.cryptoKey = null;
     this.entries = new Map();
     this.clearIdleTimer();
-    if (this.onLockCallback) {
-      this.onLockCallback();
+    for (const callback of this.onLockCallbacks) {
+      callback();
     }
   }
 
