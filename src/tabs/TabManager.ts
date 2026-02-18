@@ -141,8 +141,8 @@ export class TabManager {
     this.notify();
   }
 
-  async injectJs(tabId: string, code: string): Promise<string> {
-    return invoke('run_js_in_tab', { tabId, code });
+  async injectJs(tabId: string, code: string): Promise<void> {
+    await invoke('run_js_in_tab', { tabId, code });
   }
 
   canGoBack(): boolean {

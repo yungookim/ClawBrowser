@@ -174,13 +174,12 @@ describe('TabManager', () => {
   });
 
   it('should call injectJs with correct args', async () => {
-    mockedInvoke.mockResolvedValue('result');
-    const result = await tabManager.injectJs('tab-1', 'document.title');
+    mockedInvoke.mockResolvedValue(undefined);
+    await tabManager.injectJs('tab-1', 'document.title');
 
     expect(mockedInvoke).toHaveBeenCalledWith('run_js_in_tab', {
       tabId: 'tab-1',
       code: 'document.title',
     });
-    expect(result).toBe('result');
   });
 });
