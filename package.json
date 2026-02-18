@@ -1,0 +1,21 @@
+{
+  "name": "clawbrowser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "vite",
+    "build:frontend": "vite build",
+    "build:sidecar": "cd sidecar && npx ncc build main.ts -o dist",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "npm run build:sidecar && tauri build",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/api": "^2",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}
