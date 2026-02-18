@@ -2,11 +2,13 @@ use std::sync::Mutex;
 use tauri::Manager;
 mod tabs;
 mod ipc;
+mod sidecar;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(Mutex::new(tabs::TabState::new()))
+        .manage(Mutex::new(sidecar::SidecarState::new()))
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             println!("ClawBrowser started: {:?}", window.title());
@@ -34,6 +36,9 @@ pub fn run() {
             ipc::list_tabs,
             ipc::get_active_tab,
             ipc::reposition_tabs,
+            sidecar::start_sidecar,
+            sidecar::sidecar_send,
+            sidecar::sidecar_receive,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ClawBrowser");
