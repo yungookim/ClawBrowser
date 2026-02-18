@@ -5,6 +5,7 @@ import { TabBar } from './tabs/TabBar';
 import { NavBar } from './navigation/NavBar';
 import { SidecarBridge } from './agent/SidecarBridge';
 import { AgentPanel } from './agent/AgentPanel';
+import { AgentCapabilityRouter } from './agent/AgentCapabilityRouter';
 import { VoiceInput } from './voice/VoiceInput';
 import { SettingsPanel } from './settings/SettingsPanel';
 import { DebugCapture } from './debug/DebugCapture';
@@ -301,6 +302,8 @@ async function bootstrap(): Promise<void> {
   await domAutomation.start();
   const domAutomationRouter = new SidecarAutomationRouter(sidecar, domAutomation);
   domAutomationRouter.start();
+  const agentCapabilityRouter = new AgentCapabilityRouter(sidecar, tabManager, { domAutomation });
+  agentCapabilityRouter.start();
 
   tabManager.onChange((tabs, activeId) => {
     const active = tabs.find((tab) => tab.id === activeId);

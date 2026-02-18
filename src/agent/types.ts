@@ -32,6 +32,21 @@ export interface AgentControlSettings {
   statusIndicator: boolean;
 }
 
+export interface AgentRequest {
+  requestId: string;
+  capability: string;
+  action: string;
+  params?: Record<string, unknown>;
+  destructive?: boolean;
+}
+
+export interface AgentResult {
+  requestId: string;
+  ok: boolean;
+  data?: unknown;
+  error?: { message: string };
+}
+
 export const DEFAULT_AGENT_CONTROL: AgentControlSettings = {
   enabled: true,
   mode: 'max',

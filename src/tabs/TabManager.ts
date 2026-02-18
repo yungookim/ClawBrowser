@@ -75,6 +75,10 @@ export class TabManager {
     return this.tabs.get(this.activeTabId);
   }
 
+  getTabById(id: string): Tab | undefined {
+    return this.tabs.get(id);
+  }
+
   async createTab(url: string = 'about:blank'): Promise<string> {
     const id: string = await invoke('create_tab', { url });
     const tab: Tab = {
@@ -147,6 +151,23 @@ export class TabManager {
     const url = tab.history[tab.historyIndex];
     await invoke('navigate_tab', { tabId: this.activeTabId, url });
     tab.url = url;
+    this.notify();
+  }
+
+  async navigateTab(tabId: string, url: string): Promise<void> {
+    const tab = this.tabs.get(tabId);
+    if (!tab) {
+      throw new Error(`Tab ${tabId} not found`);
+    }
+
+    const resolved = this.resolveUrl(url);
+    await invoke('navigate_tab', { tabId, url: resolved });
+    tab.url = resolved;
+
+    tab.history = tab.history.slice(0, tab.historyIndex + 1);
+    tab.history.push(resolved);
+    tab.historyIndex = tab.history.length - 1;
+
     this.notify();
   }
 
