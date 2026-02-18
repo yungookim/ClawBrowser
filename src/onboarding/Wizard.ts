@@ -1,31 +1,51 @@
+import { applyProviderDefaults, providerRequiresApiKey } from '../shared/providerDefaults';
 import { Vault } from '../vault/Vault';
+
+export type ModelRole = 'primary' | 'secondary' | 'subagent';
 
 export interface ModelConfig {
   provider: string;
   model: string;
   apiKey: string;
-  primary: boolean;
+  baseUrl?: string;
+  temperature?: number;
+  role: ModelRole;
 }
 
 export interface WizardResult {
   workspacePath: string | null;
-  models: ModelConfig[];
+  models: Record<ModelRole, ModelConfig | null>;
   password: string;
 }
 
 type WizardCompleteHandler = (result: WizardResult) => void;
 
+type ModelInputs = {
+  provider: HTMLSelectElement;
+  model: HTMLInputElement;
+  apiKey: HTMLInputElement;
+  baseUrl: HTMLInputElement;
+  temperature: HTMLInputElement;
+};
+
 export class Wizard {
   private overlay: HTMLElement;
   private vault: Vault;
+  private existingVaultData: string | null;
   private currentStep = 0;
   private steps: HTMLElement[] = [];
-  private models: ModelConfig[] = [];
+  private models: Record<ModelRole, ModelConfig | null> = {
+    primary: null,
+    secondary: null,
+    subagent: null,
+  };
+  private modelInputs: Record<ModelRole, ModelInputs> = {} as Record<ModelRole, ModelInputs>;
   private workspacePath: string | null = null;
   private onComplete: WizardCompleteHandler | null = null;
 
-  constructor(vault: Vault) {
+  constructor(vault: Vault, existingVaultData: string | null = null) {
     this.vault = vault;
+    this.existingVaultData = existingVaultData || null;
     this.overlay = this.build();
     document.body.appendChild(this.overlay);
   }
@@ -177,6 +197,78 @@ export class Wizard {
     return step;
   }
 
+  private buildModelSection(role: ModelRole, label: string, required: boolean): HTMLElement {
+    const section = document.createElement('div');
+    section.className = 'wizard-model-section';
+
+    const header = document.createElement('div');
+    header.className = 'wizard-model-header';
+    const title = document.createElement('strong');
+    title.textContent = label;
+    header.appendChild(title);
+    if (required) {
+      const badge = document.createElement('span');
+      badge.className = 'wizard-badge';
+      badge.textContent = 'required';
+      header.appendChild(badge);
+    }
+    section.appendChild(header);
+
+    const providerSelect = document.createElement('select');
+    providerSelect.className = 'wizard-input';
+    const providers = ['openai', 'anthropic', 'groq', 'ollama', 'llamacpp'];
+    for (const p of providers) {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      providerSelect.appendChild(opt);
+    }
+    section.appendChild(providerSelect);
+
+    const modelInput = document.createElement('input');
+    modelInput.className = 'wizard-input';
+    modelInput.type = 'text';
+    modelInput.placeholder = 'Model name (e.g. gpt-5.2)';
+    section.appendChild(modelInput);
+
+    const apiKeyInput = document.createElement('input');
+    apiKeyInput.className = 'wizard-input';
+    apiKeyInput.type = 'password';
+    apiKeyInput.placeholder = 'API key (optional for local models)';
+    section.appendChild(apiKeyInput);
+
+    const baseUrlInput = document.createElement('input');
+    baseUrlInput.className = 'wizard-input';
+    baseUrlInput.type = 'text';
+    baseUrlInput.placeholder = 'Base URL (optional for local providers)';
+    section.appendChild(baseUrlInput);
+
+    const temperatureInput = document.createElement('input');
+    temperatureInput.className = 'wizard-input';
+    temperatureInput.type = 'number';
+    temperatureInput.min = '0';
+    temperatureInput.max = '2';
+    temperatureInput.step = '0.1';
+    temperatureInput.placeholder = 'Temperature (optional)';
+    section.appendChild(temperatureInput);
+
+    this.modelInputs[role] = {
+      provider: providerSelect,
+      model: modelInput,
+      apiKey: apiKeyInput,
+      baseUrl: baseUrlInput,
+      temperature: temperatureInput,
+    };
+
+    providerSelect.addEventListener('change', () => {
+      applyProviderDefaults(this.modelInputs[role], providerSelect.value, { force: true });
+    });
+
+    applyProviderDefaults(this.modelInputs[role], providerSelect.value, { force: true });
+
+    return section;
+  }
+
   private buildModelStep(): HTMLElement {
     const step = document.createElement('div');
     step.className = 'wizard-step';
@@ -188,74 +280,21 @@ export class Wizard {
 
     const desc = document.createElement('p');
     desc.className = 'wizard-desc';
-    desc.textContent = 'Configure at least one AI model provider.';
+    desc.textContent = 'Configure the primary, secondary, and subagent models.';
     step.appendChild(desc);
 
-    // Form
     const form = document.createElement('div');
     form.className = 'wizard-model-form';
 
-    const providerSelect = document.createElement('select');
-    providerSelect.className = 'wizard-input';
-    const providers = ['openai', 'anthropic', 'groq', 'ollama', 'llamacpp'];
-    for (const p of providers) {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      providerSelect.appendChild(opt);
-    }
-    form.appendChild(providerSelect);
-
-    const modelInput = document.createElement('input');
-    modelInput.className = 'wizard-input';
-    modelInput.type = 'text';
-    modelInput.placeholder = 'Model name (e.g. gpt-4o)';
-    form.appendChild(modelInput);
-
-    const apiKeyInput = document.createElement('input');
-    apiKeyInput.className = 'wizard-input';
-    apiKeyInput.type = 'password';
-    apiKeyInput.placeholder = 'API key (optional for local models)';
-    form.appendChild(apiKeyInput);
-
-    // Model list display
-    const modelList = document.createElement('div');
-    modelList.className = 'wizard-model-list';
-
-    const addBtn = document.createElement('button');
-    addBtn.className = 'wizard-btn secondary';
-    addBtn.textContent = 'Add Model';
-    addBtn.addEventListener('click', () => {
-      const model = modelInput.value.trim();
-      const provider = providerSelect.value;
-      const apiKey = apiKeyInput.value;
-
-      if (!model) return;
-
-      const config: ModelConfig = {
-        provider,
-        model,
-        apiKey,
-        primary: this.models.length === 0,
-      };
-      this.models.push(config);
-
-      // Update list display
-      const entry = document.createElement('div');
-      entry.className = 'wizard-model-entry';
-      const entryText = document.createElement('span');
-      entryText.textContent = `${provider}/${model}${config.primary ? ' (primary)' : ''}`;
-      entry.appendChild(entryText);
-      modelList.appendChild(entry);
-
-      // Clear inputs
-      modelInput.value = '';
-      apiKeyInput.value = '';
-    });
-    form.appendChild(addBtn);
-    form.appendChild(modelList);
+    form.appendChild(this.buildModelSection('primary', 'Primary model', true));
+    form.appendChild(this.buildModelSection('secondary', 'Secondary model', false));
+    form.appendChild(this.buildModelSection('subagent', 'Subagent model', false));
 
     step.appendChild(form);
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'wizard-error';
+    step.appendChild(errorEl);
 
     const btnRow = document.createElement('div');
     btnRow.className = 'wizard-btn-row';
@@ -270,16 +309,68 @@ export class Wizard {
     nextBtn.className = 'wizard-btn primary';
     nextBtn.textContent = 'Next';
     nextBtn.addEventListener('click', () => {
-      if (this.models.length === 0) {
-        // Require at least one model
-        return;
-      }
+      const collected = this.collectModels(errorEl);
+      if (!collected) return;
+      this.models = collected;
       this.showStep(3);
     });
     btnRow.appendChild(nextBtn);
 
     step.appendChild(btnRow);
     return step;
+  }
+
+  private collectModels(errorEl: HTMLElement): Record<ModelRole, ModelConfig | null> | null {
+    errorEl.textContent = '';
+    const roles: ModelRole[] = ['primary', 'secondary', 'subagent'];
+    const roleLabels: Record<ModelRole, string> = {
+      primary: 'Primary',
+      secondary: 'Secondary',
+      subagent: 'Subagent',
+    };
+    const result: Record<ModelRole, ModelConfig | null> = {
+      primary: null,
+      secondary: null,
+      subagent: null,
+    };
+
+    for (const role of roles) {
+      const inputs = this.modelInputs[role];
+      if (!inputs) continue;
+
+      const provider = inputs.provider.value.trim();
+      const model = inputs.model.value.trim();
+      const apiKey = inputs.apiKey.value.trim();
+      const baseUrl = inputs.baseUrl.value.trim();
+      const temperatureRaw = inputs.temperature.value.trim();
+      const temperature = temperatureRaw ? Number(temperatureRaw) : undefined;
+
+      if (role === 'primary' && !model) {
+        errorEl.textContent = 'Primary model is required.';
+        return null;
+      }
+
+      if (!model) {
+        result[role] = null;
+        continue;
+      }
+
+      if (providerRequiresApiKey(provider) && !apiKey) {
+        errorEl.textContent = `${roleLabels[role]} model requires an API key for ${provider}.`;
+        return null;
+      }
+
+      result[role] = {
+        provider,
+        model,
+        apiKey,
+        baseUrl: baseUrl || undefined,
+        temperature: Number.isFinite(temperature) ? temperature : undefined,
+        role,
+      };
+    }
+
+    return result;
   }
 
   private buildPasswordStep(): HTMLElement {
@@ -338,13 +429,18 @@ export class Wizard {
       }
 
       try {
-        // Unlock vault with new password
-        await this.vault.unlock(password);
+        // Unlock vault with existing data if present, otherwise create a fresh vault.
+        if (this.existingVaultData) {
+          await this.vault.unlock(password, this.existingVaultData);
+        } else {
+          await this.vault.unlock(password);
+        }
 
-        // Store API keys in vault
-        for (const model of this.models) {
-          if (model.apiKey) {
-            await this.vault.set(`apikey:${model.provider}`, model.apiKey);
+        // Store API keys in vault per role
+        for (const role of Object.keys(this.models) as ModelRole[]) {
+          const model = this.models[role];
+          if (model?.apiKey) {
+            await this.vault.set(`apikey:${role}`, model.apiKey);
           }
         }
 

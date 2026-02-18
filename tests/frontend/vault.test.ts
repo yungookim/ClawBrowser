@@ -51,6 +51,7 @@ describe('Vault', () => {
 
     const exported = await vault.exportEncrypted();
     expect(exported).toBeTruthy();
+    expect(vault.getLastExported()).toBe(exported);
 
     // Create a new vault and import
     const vault2 = new Vault(0);
@@ -58,6 +59,7 @@ describe('Vault', () => {
     expect(vault2.isUnlocked).toBe(true);
     expect(await vault2.get('key1')).toBe('value1');
     expect(await vault2.get('key2')).toBe('value2');
+    expect(vault2.getLastExported()).toBe(exported);
   });
 
   it('should reject wrong password on import', async () => {

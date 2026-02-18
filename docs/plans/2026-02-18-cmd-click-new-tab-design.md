@@ -1,6 +1,7 @@
-# Design: Cmd+Click Opens New Tab (macOS)
+# Design: Cmd+Click Opens New Tab (macOS) [COMPLETED]
 
 Date: 2026-02-18
+Status: COMPLETED
 
 ## Context
 We already intercept Shift+Click on links to open a new tab. On macOS, the system convention is Cmd+Click for opening links in a new tab. We want both Shift+Click and Cmd+Click to open a new tab immediately, but only treat Cmd as a modifier on macOS.

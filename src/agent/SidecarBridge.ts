@@ -47,7 +47,8 @@ export class SidecarBridge {
     });
 
     // Spawn the sidecar process via Tauri shell plugin
-    const command = Command.sidecar('sidecar/clawbrowser-agent');
+    const sidecarName = import.meta.env.VITE_SIDECAR_NAME || 'sidecar/clawbrowser-agent';
+    const command = Command.sidecar(sidecarName);
 
     command.stdout.on('data', (line: string) => {
       const trimmed = line.trim();
@@ -147,11 +148,41 @@ export class SidecarBridge {
     provider: string,
     model: string,
     apiKey: string | undefined,
-    primary: boolean,
+    role: string,
     baseUrl?: string,
     temperature?: number,
   ): Promise<void> {
-    await this.send('configureModel', { provider, model, apiKey, primary, baseUrl, temperature });
+    await this.send('configureModel', { provider, model, apiKey, role, baseUrl, temperature });
+  }
+
+  async getConfig(): Promise<{
+    onboardingComplete: boolean;
+    workspacePath: string | null;
+    models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
+    commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+  }> {
+    return this.send('getConfig', {}) as Promise<{
+      onboardingComplete: boolean;
+      workspacePath: string | null;
+      models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
+      commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+    }>;
+  }
+
+  async updateConfig(partial: Record<string, unknown>): Promise<{ status: string }> {
+    return this.send('updateConfig', partial) as Promise<{ status: string }>;
+  }
+
+  async loadVault(): Promise<{ data: string | null }> {
+    return this.send('loadVault', {}) as Promise<{ data: string | null }>;
+  }
+
+  async saveVault(data: string): Promise<{ status: string }> {
+    return this.send('saveVault', { data }) as Promise<{ status: string }>;
+  }
+
+  async terminalExec(command: string, args: string[], cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+    return this.send('terminalExec', { command, args, cwd }) as Promise<{ exitCode: number; stdout: string; stderr: string }>;
   }
 
   async tabUpdate(tabCount: number, activeTabTitle: string): Promise<void> {
@@ -238,6 +269,10 @@ export class SidecarBridge {
     return this.send('readLog', { date }) as Promise<{ date: string; content: string }>;
   }
 
+  async getLogsDir(): Promise<{ path: string }> {
+    return this.send('getLogsDir', {}) as Promise<{ path: string }>;
+  }
+
   async debugEvent(event: Record<string, unknown>): Promise<void> {
     await this.send('debugEvent', event);
   }
@@ -252,8 +287,8 @@ export class SidecarBridge {
     return this.send('storeScreenshot', payload) as Promise<{ status: string; path?: string }>;
   }
 
-  async logClientEvent(entry: string): Promise<void> {
-    await this.send('logClientEvent', { entry });
+  async logSystemEvent(level: string, message: string): Promise<void> {
+    await this.send('logSystemEvent', { level, message });
   }
 
   private writeToSidecar(request: JsonRpcRequest): void {

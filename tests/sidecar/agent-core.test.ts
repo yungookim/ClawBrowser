@@ -2,16 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentCore, type AgentContext } from '../../sidecar/core/AgentCore';
 import { ModelManager } from '../../sidecar/core/ModelManager';
 
+function isRoutingCall(messages: any[]): boolean {
+  const first = messages?.[0];
+  return Boolean(first && typeof first.content === 'string' && first.content.includes('router that selects which model'));
+}
+
+function isAgentSystemCall(messages: any[]): boolean {
+  const first = messages?.[0];
+  return Boolean(first && typeof first.content === 'string' && first.content.includes('You are Claw'));
+}
+
 describe('AgentCore', () => {
   let modelManager: ModelManager;
   let agentCore: AgentCore;
   let mockInvoke: ReturnType<typeof vi.fn>;
+  let replyContent: any;
+  let replyQueue: any[];
+  let rejectError: Error | null;
 
   beforeEach(() => {
     vi.clearAllMocks();
     modelManager = new ModelManager();
     agentCore = new AgentCore(modelManager);
     mockInvoke = vi.fn();
+    replyContent = { content: 'Response' };
+    replyQueue = [];
+    rejectError = null;
   });
 
   /** Helper: configure model manager and mock the created model's invoke. */
@@ -23,10 +39,32 @@ describe('AgentCore', () => {
       role: 'primary',
     });
 
-    // Spy on createModel to return a mock that uses our mockInvoke
+    mockInvoke = vi.fn((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({ content: '{"role":"primary","reason":"default"}' });
+      }
+      if (rejectError) {
+        return Promise.reject(rejectError);
+      }
+      if (replyQueue.length > 0) {
+        return Promise.resolve(replyQueue.shift());
+      }
+      return Promise.resolve(replyContent);
+    });
+
     vi.spyOn(modelManager, 'createModel').mockReturnValue({
       invoke: mockInvoke,
     } as any);
+  }
+
+  function getAgentSystemCall(): any[] {
+    const call = mockInvoke.mock.calls.find((args) => isAgentSystemCall(args[0]));
+    if (!call) throw new Error('Agent system call not found');
+    return call;
+  }
+
+  function getAgentSystemCalls(): any[][] {
+    return mockInvoke.mock.calls.filter((args) => isAgentSystemCall(args[0]));
   }
 
   it('should return config message when no model is configured', async () => {
@@ -40,16 +78,16 @@ describe('AgentCore', () => {
 
   it('should invoke the model and return reply', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Hello! How can I help you?' });
+    replyContent = { content: 'Hello! How can I help you?' };
 
     const response = await agentCore.query({ userQuery: 'Hello' });
     expect(response.reply).toBe('Hello! How can I help you?');
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalled();
   });
 
   it('should include tab context in system prompt', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     await agentCore.query({
       userQuery: 'What page am I on?',
@@ -58,8 +96,8 @@ describe('AgentCore', () => {
       tabCount: 3,
     });
 
-    const callArgs = mockInvoke.mock.calls[0][0];
-    const systemMsg = callArgs[0];
+    const callArgs = getAgentSystemCall();
+    const systemMsg = callArgs[0][0];
     expect(systemMsg.content).toContain('Example Domain');
     expect(systemMsg.content).toContain('https://example.com');
     expect(systemMsg.content).toContain('Open tabs: 3');
@@ -67,7 +105,7 @@ describe('AgentCore', () => {
 
   it('should include workspace files in system prompt', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     await agentCore.query({
       userQuery: 'Test',
@@ -77,8 +115,8 @@ describe('AgentCore', () => {
       },
     });
 
-    const callArgs = mockInvoke.mock.calls[0][0];
-    const systemMsg = callArgs[0];
+    const callArgs = getAgentSystemCall();
+    const systemMsg = callArgs[0][0];
     expect(systemMsg.content).toContain('SOUL.md');
     expect(systemMsg.content).toContain('I am Claw');
     expect(systemMsg.content).toContain('USER.md');
@@ -87,9 +125,10 @@ describe('AgentCore', () => {
 
   it('should maintain conversation history', async () => {
     setupMockModel();
-    mockInvoke
-      .mockResolvedValueOnce({ content: 'First response' })
-      .mockResolvedValueOnce({ content: 'Second response' });
+    replyQueue = [
+      { content: 'First response' },
+      { content: 'Second response' },
+    ];
 
     await agentCore.query({ userQuery: 'First message' });
     expect(agentCore.getHistoryLength()).toBe(2); // user + assistant
@@ -97,16 +136,14 @@ describe('AgentCore', () => {
     await agentCore.query({ userQuery: 'Second message' });
     expect(agentCore.getHistoryLength()).toBe(4); // 2 user + 2 assistant
 
-    // Second call should include history from first
-    // Messages: [system, user1, assistant1, user2] = 4 items
-    // (user2 is added to history before invoke, assistant2 after)
-    const secondCallArgs = mockInvoke.mock.calls[1][0];
-    expect(secondCallArgs).toHaveLength(4); // system + 3 history messages at invoke time
+    const systemCalls = getAgentSystemCalls();
+    const secondCallArgs = systemCalls[1];
+    expect(secondCallArgs[0]).toHaveLength(4); // system + history
   });
 
   it('should clear conversation history', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     await agentCore.query({ userQuery: 'Message' });
     expect(agentCore.getHistoryLength()).toBe(2);
@@ -117,7 +154,7 @@ describe('AgentCore', () => {
 
   it('should handle model invocation errors gracefully', async () => {
     setupMockModel();
-    mockInvoke.mockRejectedValue(new Error('API rate limit exceeded'));
+    rejectError = new Error('API rate limit exceeded');
 
     const response = await agentCore.query({ userQuery: 'Hello' });
     expect(response.reply).toBe('Error: API rate limit exceeded');
@@ -125,9 +162,9 @@ describe('AgentCore', () => {
 
   it('should handle non-string content from model', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({
+    replyContent = {
       content: [{ type: 'text', text: 'Structured response' }],
-    });
+    };
 
     const response = await agentCore.query({ userQuery: 'Hello' });
     // Should JSON.stringify non-string content
@@ -136,7 +173,7 @@ describe('AgentCore', () => {
 
   it('should trim history when exceeding MAX_HISTORY (40)', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     // Send 25 messages (each creates 2 history entries = 50 > 40)
     for (let i = 0; i < 25; i++) {
@@ -145,13 +182,12 @@ describe('AgentCore', () => {
 
     // History trim happens before invoke (trims to 40), then assistant reply
     // is appended after invoke, so final length is 41 at most.
-    // The trim keeps history from growing unbounded.
     expect(agentCore.getHistoryLength()).toBeLessThanOrEqual(41);
   });
 
   it('should skip empty workspace files in system prompt', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     await agentCore.query({
       userQuery: 'Test',
@@ -162,8 +198,8 @@ describe('AgentCore', () => {
       },
     });
 
-    const callArgs = mockInvoke.mock.calls[0][0];
-    const systemMsg = callArgs[0];
+    const callArgs = getAgentSystemCall();
+    const systemMsg = callArgs[0][0];
     expect(systemMsg.content).toContain('SOUL.md');
     expect(systemMsg.content).not.toContain('EMPTY.md');
     expect(systemMsg.content).not.toContain('WHITESPACE.md');
@@ -171,13 +207,51 @@ describe('AgentCore', () => {
 
   it('should always include core identity in system prompt', async () => {
     setupMockModel();
-    mockInvoke.mockResolvedValue({ content: 'Response' });
+    replyContent = { content: 'Response' };
 
     await agentCore.query({ userQuery: 'Hello' });
 
-    const callArgs = mockInvoke.mock.calls[0][0];
-    const systemMsg = callArgs[0];
+    const callArgs = getAgentSystemCall();
+    const systemMsg = callArgs[0][0];
     expect(systemMsg.content).toContain('You are Claw');
     expect(systemMsg.content).toContain('ClawBrowser');
+  });
+
+  it('executes terminal tool calls and returns follow-up reply', async () => {
+    const executor = {
+      execute: vi.fn().mockResolvedValue({ exitCode: 0, stdout: 'ok', stderr: '' }),
+    };
+
+    modelManager = new ModelManager();
+    agentCore = new AgentCore(modelManager, executor as any);
+
+    modelManager.configure({
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'test-key',
+      role: 'primary',
+    });
+
+    let nonRouterCount = 0;
+    mockInvoke = vi.fn((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({ content: '{"role":"primary","reason":"default"}' });
+      }
+      if (nonRouterCount === 0) {
+        nonRouterCount += 1;
+        return Promise.resolve({
+          content: '{"tool":"terminalExec","command":"codex","args":["--help"]}',
+        });
+      }
+      return Promise.resolve({ content: 'Done.' });
+    });
+
+    vi.spyOn(modelManager, 'createModel').mockReturnValue({
+      invoke: mockInvoke,
+    } as any);
+
+    const response = await agentCore.query({ userQuery: 'Run codex help' });
+    expect(executor.execute).toHaveBeenCalledWith('codex', ['--help'], undefined);
+    expect(response.reply).toBe('Done.');
   });
 });

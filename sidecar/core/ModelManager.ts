@@ -4,7 +4,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGroq } from '@langchain/groq';
 
 export type Provider = 'openai' | 'anthropic' | 'groq' | 'ollama' | 'llamacpp';
-export type ModelRole = 'primary' | 'subagent';
+export type ModelRole = 'primary' | 'secondary' | 'subagent';
 
 export interface ModelConfig {
   provider: Provider;

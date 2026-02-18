@@ -1,0 +1,19 @@
+#!/bin/bash
+# ClawBrowser Agent Sidecar (dev)
+# Resolve repo-root sidecar build in dev mode.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+SIDECAR_JS=""
+for ROOT in "$SCRIPT_DIR/../.." "$SCRIPT_DIR/../../.."; do
+  if [ -f "$ROOT/sidecar/dist/main.js" ]; then
+    SIDECAR_JS="$ROOT/sidecar/dist/main.js"
+    break
+  fi
+done
+
+if [ -z "$SIDECAR_JS" ]; then
+  echo "[sidecar-dev] Could not find sidecar/dist/main.js from $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+exec node "$SIDECAR_JS"

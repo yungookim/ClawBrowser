@@ -26,7 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["sidecar/clawbrowser-agent"]
+    "externalBin": ["sidecar/clawbrowser-agent", "sidecar/clawbrowser-agent-dev"]
   },
   "plugins": {
     "shell": {

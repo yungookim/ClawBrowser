@@ -301,6 +301,7 @@ dependencies = [
 name = "clawbrowser"
 version = "0.1.0"
 dependencies = [
+ "log",
  "objc2",
  "objc2-web-kit",
  "serde",
@@ -308,6 +309,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
+ "time",
  "tokio",
  "url",
  "uuid",

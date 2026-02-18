@@ -1,4 +1,6 @@
-# ClawBrowser Onboarding + Models + Terminal Exec Design
+# ClawBrowser Onboarding + Models + Terminal Exec Design [COMPLETED]
+
+Status: COMPLETED (onboarding, models, config store, command executor all implemented; terminal execution redesigned in separate plan)
 
 ## Summary
 Implement the onboarding flow and model role configuration (primary/secondary/subagent), plus agent-initiated command execution through a regex allowlist. Store persistent config in the sidecar at `~/.clawbrowser/config.json` and keep secrets in `~/.clawbrowser/vault.json`.

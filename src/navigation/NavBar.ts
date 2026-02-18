@@ -7,8 +7,10 @@ export class NavBar {
   private backBtn!: HTMLButtonElement;
   private forwardBtn!: HTMLButtonElement;
   private refreshBtn!: HTMLButtonElement;
+  private agentToggleBtn!: HTMLButtonElement;
   private settingsBtn!: HTMLButtonElement;
   private onSettingsToggle: (() => void) | null = null;
+  private onAgentToggle: (() => void) | null = null;
 
   constructor(container: HTMLElement, tabManager: TabManager, options?: { onSettingsToggle?: () => void }) {
     this.container = container;
@@ -56,6 +58,16 @@ export class NavBar {
     });
     this.container.appendChild(this.refreshBtn);
 
+    // Agent toggle button
+    this.agentToggleBtn = document.createElement('button');
+    this.agentToggleBtn.className = 'nav-btn agent-toggle';
+    this.agentToggleBtn.textContent = 'Agent';
+    this.agentToggleBtn.title = 'Toggle Agent Panel';
+    this.agentToggleBtn.addEventListener('click', () => {
+      this.onAgentToggle?.();
+    });
+    this.container.appendChild(this.agentToggleBtn);
+
     // URL input
     this.urlInput = document.createElement('input');
     this.urlInput.className = 'url-input';
@@ -89,6 +101,16 @@ export class NavBar {
     this.container.appendChild(this.settingsBtn);
 
     this.updateState();
+  }
+
+  setAgentToggleHandler(handler: () => void): void {
+    this.onAgentToggle = handler;
+  }
+
+  focusUrlInput(): void {
+    if (!this.urlInput) return;
+    this.urlInput.focus();
+    this.urlInput.select();
   }
 
   setSettingsOpen(open: boolean): void {

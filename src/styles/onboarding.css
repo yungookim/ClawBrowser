@@ -157,6 +157,34 @@ select.wizard-input {
   gap: 10px;
 }
 
+.wizard-model-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.wizard-model-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.wizard-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--contrast-bg);
+  color: var(--contrast-text);
+}
+
 .wizard-model-list {
   display: flex;
   flex-direction: column;

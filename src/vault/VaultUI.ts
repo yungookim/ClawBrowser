@@ -5,6 +5,7 @@ export class VaultUI {
   private vault: Vault;
   private errorEl!: HTMLElement;
   private passwordInput!: HTMLInputElement;
+  private encryptedData: string | null = null;
   private onUnlock: (() => void) | null = null;
 
   constructor(vault: Vault) {
@@ -35,7 +36,7 @@ export class VaultUI {
 
   private build(): HTMLElement {
     const overlay = document.createElement('div');
-    overlay.className = 'vault-overlay visible';
+    overlay.className = 'vault-overlay';
 
     const card = document.createElement('div');
     card.className = 'vault-card';
@@ -78,6 +79,10 @@ export class VaultUI {
     return overlay;
   }
 
+  setEncryptedData(data: string | null): void {
+    this.encryptedData = data;
+  }
+
   private async handleUnlock(): Promise<void> {
     const password = this.passwordInput.value;
     if (!password) {
@@ -86,10 +91,12 @@ export class VaultUI {
     }
 
     try {
-      // Try to load existing vault data
-      // In a real app this would read from Tauri filesystem
-      // For now, unlock with fresh vault if no data exists
-      await this.vault.unlock(password);
+      const data = this.encryptedData || this.vault.getLastExported();
+      if (data) {
+        await this.vault.importEncrypted(password, data);
+      } else {
+        await this.vault.unlock(password);
+      }
       this.hide();
       if (this.onUnlock) {
         this.onUnlock();

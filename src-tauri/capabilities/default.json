@@ -11,6 +11,10 @@
         {
           "name": "sidecar/clawbrowser-agent",
           "sidecar": true
+        },
+        {
+          "name": "sidecar/clawbrowser-agent-dev",
+          "sidecar": true
         }
       ]
     },

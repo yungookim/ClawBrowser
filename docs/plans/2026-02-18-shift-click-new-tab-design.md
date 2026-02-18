@@ -1,6 +1,7 @@
-# Design: Shift+Click Opens New Tab
+# Design: Shift+Click Opens New Tab [COMPLETED]
 
 Date: 2026-02-18
+Status: COMPLETED
 
 ## Context
 Users want Shift+Click on any link to open in a new tab and switch immediately. Links that request a new window (e.g., target="_blank" or window.open()) should also open a new tab and switch immediately.

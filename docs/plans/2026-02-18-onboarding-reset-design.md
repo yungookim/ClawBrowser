@@ -1,4 +1,6 @@
-# Onboarding Reset Button Design
+# Onboarding Reset Button Design [COMPLETED]
+
+Status: COMPLETED
 
 ## Summary
 Add a Settings button to restart onboarding by setting `onboardingComplete=false` and reloading the app. Preserve existing vault data so the user can re-enter their password and continue with their stored API keys.

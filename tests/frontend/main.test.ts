@@ -8,8 +8,25 @@ const mocks = vi.hoisted(() => ({
   createTab: vi.fn(),
   sidecarStart: vi.fn(),
   sidecarAgentQuery: vi.fn(),
+  sidecarGetConfig: vi.fn(),
+  sidecarLoadVault: vi.fn(),
+  sidecarSaveVault: vi.fn(),
+  sidecarUpdateConfig: vi.fn(),
+  sidecarConfigureModel: vi.fn(),
   agentToggleHandler: null as null | (() => void),
   voiceOnResult: null as null | ((transcript: string) => void),
+  vaultUIShow: vi.fn(),
+  vaultUIHide: vi.fn(),
+  vaultUISetEncryptedData: vi.fn(),
+  vaultUISetOnUnlock: vi.fn(),
+  vaultOnUnlock: null as null | (() => void),
+  wizardShow: vi.fn(),
+  wizardSetOnComplete: vi.fn(),
+  wizardOnComplete: null as null | ((result: any) => void),
+  vaultGet: vi.fn(),
+  vaultSet: vi.fn(),
+  vaultExport: vi.fn(),
+  vaultImport: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -60,7 +77,13 @@ vi.mock('../../src/agent/SidecarBridge', () => ({
   SidecarBridge: class {
     start = mocks.sidecarStart;
     agentQuery = mocks.sidecarAgentQuery;
+    getConfig = mocks.sidecarGetConfig;
+    loadVault = mocks.sidecarLoadVault;
+    saveVault = mocks.sidecarSaveVault;
+    updateConfig = mocks.sidecarUpdateConfig;
+    configureModel = mocks.sidecarConfigureModel;
     onNotification = vi.fn();
+    tabUpdate = vi.fn();
   },
 }));
 
@@ -79,6 +102,41 @@ vi.mock('../../src/voice/VoiceInput', () => ({
   },
 }));
 
+vi.mock('../../src/vault/Vault', () => ({
+  Vault: class {
+    isUnlocked = true;
+    unlock = vi.fn();
+    get = (...args: any[]) => mocks.vaultGet(...args);
+    set = (...args: any[]) => mocks.vaultSet(...args);
+    exportEncrypted = (...args: any[]) => mocks.vaultExport(...args);
+    importEncrypted = (...args: any[]) => mocks.vaultImport(...args);
+  },
+}));
+
+vi.mock('../../src/vault/VaultUI', () => ({
+  VaultUI: class {
+    constructor(_vault: unknown) {}
+    show(): void { mocks.vaultUIShow(); }
+    hide(): void { mocks.vaultUIHide(); }
+    setEncryptedData(data: string | null): void { mocks.vaultUISetEncryptedData(data); }
+    setOnUnlock(handler: () => void): void {
+      mocks.vaultUISetOnUnlock();
+      mocks.vaultOnUnlock = handler;
+    }
+  },
+}));
+
+vi.mock('../../src/onboarding/Wizard', () => ({
+  Wizard: class {
+    constructor(_vault: unknown) {}
+    setOnComplete(handler: (result: any) => void): void {
+      mocks.wizardSetOnComplete();
+      mocks.wizardOnComplete = handler;
+    }
+    show(): void { mocks.wizardShow(); }
+  },
+}));
+
 describe('main bootstrap', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -92,9 +150,24 @@ describe('main bootstrap', () => {
     mocks.createTab.mockResolvedValue('tab-1');
     mocks.sidecarStart.mockResolvedValue(undefined);
     mocks.sidecarAgentQuery.mockResolvedValue('ok');
+    mocks.sidecarGetConfig.mockResolvedValue({
+      onboardingComplete: false,
+      workspacePath: null,
+      models: {},
+      commandAllowlist: [],
+    });
+    mocks.sidecarLoadVault.mockResolvedValue({ data: null });
+    mocks.sidecarSaveVault.mockResolvedValue({ status: 'ok' });
+    mocks.sidecarUpdateConfig.mockResolvedValue({ status: 'ok' });
+    mocks.sidecarConfigureModel.mockResolvedValue(undefined);
+    mocks.vaultGet.mockResolvedValue(undefined);
+    mocks.vaultSet.mockResolvedValue(undefined);
+    mocks.vaultExport.mockResolvedValue('encrypted');
+    mocks.vaultImport.mockResolvedValue(undefined);
     mocks.agentToggleHandler = null;
     mocks.voiceOnResult = null;
     mocks.resizeHandler = null;
+    mocks.vaultOnUnlock = null;
   });
 
   it('initializes UI and wires handlers', async () => {
@@ -104,6 +177,7 @@ describe('main bootstrap', () => {
     expect(mocks.tabManagerInit).toHaveBeenCalledTimes(1);
     expect(mocks.createTab).toHaveBeenCalledWith('about:blank');
     expect(mocks.sidecarStart).toHaveBeenCalledTimes(1);
+    expect(mocks.wizardShow).toHaveBeenCalledTimes(1);
 
     const panel = document.getElementById('agent-panel') as HTMLElement;
     expect(panel.classList.contains('open')).toBe(false);
@@ -115,5 +189,36 @@ describe('main bootstrap', () => {
 
     mocks.resizeHandler?.();
     expect(mocks.invoke).toHaveBeenCalledWith('reposition_tabs');
+  });
+
+  it('shows vault UI when onboarding is complete and configures models on unlock', async () => {
+    mocks.sidecarGetConfig.mockResolvedValueOnce({
+      onboardingComplete: true,
+      workspacePath: null,
+      models: {
+        primary: { provider: 'openai', model: 'gpt-4o' },
+      },
+      commandAllowlist: [],
+    });
+    mocks.sidecarLoadVault.mockResolvedValueOnce({ data: 'vault-data' });
+    mocks.vaultGet.mockResolvedValueOnce('sk-test');
+
+    await import('../../src/main');
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(mocks.vaultUISetEncryptedData).toHaveBeenCalledWith('vault-data');
+    expect(mocks.vaultUIShow).toHaveBeenCalled();
+
+    mocks.vaultOnUnlock?.();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(mocks.sidecarConfigureModel).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+      'sk-test',
+      'primary',
+      undefined,
+      undefined,
+    );
   });
 });

@@ -1,4 +1,6 @@
-# Setup Wizard Reset Design
+# Setup Wizard Reset Design [COMPLETED]
+
+Status: COMPLETED
 
 ## Summary
 Add a Settings button that restarts the **Setup Wizard** immediately after confirmation. The flow creates a **fresh vault** and overwrites existing vault data when the wizard completes.

@@ -14,6 +14,8 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 url = "2"
+log = "0.4"
+time = { version = "0.3", features = ["formatting", "macros"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

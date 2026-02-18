@@ -6,7 +6,9 @@ describe('VaultUI', () => {
   let lockCallback: (() => void) | null = null;
   let vault: Vault & {
     unlock: ReturnType<typeof vi.fn>;
+    importEncrypted: ReturnType<typeof vi.fn>;
     onLock: ReturnType<typeof vi.fn>;
+    getLastExported: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -14,19 +16,24 @@ describe('VaultUI', () => {
     lockCallback = null;
     vault = {
       unlock: vi.fn().mockResolvedValue(undefined),
+      importEncrypted: vi.fn().mockResolvedValue(undefined),
       onLock: vi.fn((cb: () => void) => {
         lockCallback = cb;
       }),
+      getLastExported: vi.fn().mockReturnValue(null),
     } as any;
   });
 
   it('shows and hides the overlay', () => {
-    new VaultUI(vault);
+    const ui = new VaultUI(vault);
 
     const overlay = document.querySelector('.vault-overlay') as HTMLElement;
+    expect(overlay.classList.contains('visible')).toBe(false);
+
+    ui.show();
     expect(overlay.classList.contains('visible')).toBe(true);
 
-    overlay.classList.remove('visible');
+    ui.hide();
     expect(overlay.classList.contains('visible')).toBe(false);
 
     lockCallback?.();
@@ -34,7 +41,8 @@ describe('VaultUI', () => {
   });
 
   it('validates empty password and shows errors', async () => {
-    new VaultUI(vault);
+    const ui = new VaultUI(vault);
+    ui.show();
     const overlay = document.querySelector('.vault-overlay') as HTMLElement;
     const input = overlay.querySelector('.vault-password') as HTMLInputElement;
     const button = overlay.querySelector('.vault-unlock-btn') as HTMLButtonElement;
@@ -50,6 +58,7 @@ describe('VaultUI', () => {
     const ui = new VaultUI(vault);
     const onUnlock = vi.fn();
     ui.setOnUnlock(onUnlock);
+    ui.show();
 
     const overlay = document.querySelector('.vault-overlay') as HTMLElement;
     const input = overlay.querySelector('.vault-password') as HTMLInputElement;
@@ -65,9 +74,28 @@ describe('VaultUI', () => {
     expect(onUnlock).toHaveBeenCalledTimes(1);
   });
 
+  it('uses encrypted data when available', async () => {
+    const ui = new VaultUI(vault);
+    ui.setEncryptedData('encrypted');
+    ui.show();
+
+    const overlay = document.querySelector('.vault-overlay') as HTMLElement;
+    const input = overlay.querySelector('.vault-password') as HTMLInputElement;
+    const button = overlay.querySelector('.vault-unlock-btn') as HTMLButtonElement;
+
+    input.value = 'password123';
+    button.click();
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(vault.importEncrypted).toHaveBeenCalledWith('password123', 'encrypted');
+    expect(vault.unlock).not.toHaveBeenCalled();
+  });
+
   it('shows error on unlock failure', async () => {
     vault.unlock.mockRejectedValueOnce(new Error('bad password'));
-    new VaultUI(vault);
+    const ui = new VaultUI(vault);
+    ui.show();
 
     const overlay = document.querySelector('.vault-overlay') as HTMLElement;
     const input = overlay.querySelector('.vault-password') as HTMLInputElement;

@@ -15,6 +15,7 @@ export class Vault {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private idleTimeoutMs: number;
   private onLockCallback: (() => void) | null = null;
+  private lastExported: string | null = null;
 
   constructor(idleTimeoutMs: number = 5 * 60 * 1000) {
     this.idleTimeoutMs = idleTimeoutMs;
@@ -129,11 +130,18 @@ export class Vault {
       entries: encryptedEntries,
     };
 
-    return JSON.stringify(data);
+    const serialized = JSON.stringify(data);
+    this.lastExported = serialized;
+    return serialized;
   }
 
   async importEncrypted(password: string, data: string): Promise<void> {
     await this.unlock(password, data);
+    this.lastExported = data;
+  }
+
+  getLastExported(): string | null {
+    return this.lastExported;
   }
 
   private async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {

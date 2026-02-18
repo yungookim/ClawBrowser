@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import { SidecarBridge } from '../agent/SidecarBridge';
+import { applyProviderDefaults, providerRequiresApiKey } from '../shared/providerDefaults';
 import { TabManager } from '../tabs/TabManager';
+import { Vault } from '../vault/Vault';
 
 type ModelConfig = {
   provider: string;
@@ -39,6 +42,7 @@ export class SettingsPanel {
   private container: HTMLElement;
   private bridge: SidecarBridge;
   private tabManager: TabManager;
+  private vault: Vault | null;
   private root: HTMLElement;
   private visible = false;
   private lastActiveTabId: string | null = null;
@@ -54,11 +58,29 @@ export class SettingsPanel {
   private statusRowsEl!: HTMLElement;
   private memoryQueryInput!: HTMLInputElement;
   private modelForm!: HTMLFormElement;
+  private modelProviderSelect!: HTMLSelectElement;
+  private modelInput!: HTMLInputElement;
+  private modelApiKeyInput!: HTMLInputElement;
+  private modelBaseUrlInput!: HTMLInputElement;
+  private allowlistForm!: HTMLFormElement;
+  private allowlistListEl!: HTMLElement;
+  private allowlistCommandInput!: HTMLInputElement;
+  private allowlistRegexInput!: HTMLTextAreaElement;
+  private allowlist: Array<{ command: string; argsRegex: string[] }> = [];
+  private onStartSetupWizard: (() => void) | null = null;
 
-  constructor(container: HTMLElement, bridge: SidecarBridge, tabManager: TabManager) {
+  constructor(
+    container: HTMLElement,
+    bridge: SidecarBridge,
+    tabManager: TabManager,
+    vault?: Vault,
+    onStartSetupWizard?: () => void,
+  ) {
     this.container = container;
     this.bridge = bridge;
     this.tabManager = tabManager;
+    this.vault = vault || null;
+    this.onStartSetupWizard = onStartSetupWizard || null;
     this.root = this.build();
     this.container.appendChild(this.root);
 
@@ -133,7 +155,7 @@ export class SettingsPanel {
           <section class="settings-card" data-card="models">
             <div class="settings-card-header">
               <h2>Models</h2>
-              <p>Primary and subagent routing. Configure once, reuse everywhere.</p>
+              <p>Primary, secondary, and subagent routing. Configure once, reuse everywhere.</p>
             </div>
             <form class="settings-form" data-form="model">
               <label class="settings-field">
@@ -162,6 +184,7 @@ export class SettingsPanel {
                 Role
                 <select class="settings-select" name="role">
                   <option value="primary">Primary</option>
+                  <option value="secondary">Secondary</option>
                   <option value="subagent">Subagent</option>
                 </select>
               </label>
@@ -172,6 +195,25 @@ export class SettingsPanel {
               <button class="settings-btn solid" type="submit">Save Model</button>
             </form>
             <div class="settings-list" data-role="model-list"></div>
+          </section>
+
+          <section class="settings-card" data-card="allowlist">
+            <div class="settings-card-header">
+              <h2>Command Allowlist</h2>
+              <p>Permit agent-run terminal commands with regex-validated args.</p>
+            </div>
+            <form class="settings-form" data-form="allowlist">
+              <label class="settings-field">
+                Command
+                <input class="settings-input" name="command" placeholder="codex" required />
+              </label>
+              <label class="settings-field">
+                Args Regex (one per line)
+                <textarea class="settings-textarea" name="argsRegex" rows="4" placeholder="^--project$&#10;^.+$"></textarea>
+              </label>
+              <button class="settings-btn solid" type="submit">Save Allowlist Entry</button>
+            </form>
+            <div class="settings-list" data-role="allowlist-list"></div>
           </section>
 
           <section class="settings-card" data-card="cron">
@@ -235,9 +277,22 @@ export class SettingsPanel {
               <h2>Logs</h2>
               <p>Daily activity logs written by the sidecar.</p>
             </div>
+            <div class="settings-row">
+              <button class="settings-btn outline" data-action="open-logs" type="button">Open Logs Folder</button>
+            </div>
             <div class="settings-columns">
               <div class="settings-list" data-role="log-list"></div>
               <pre class="settings-log-view" data-role="log-content">Select a log to preview.</pre>
+            </div>
+          </section>
+
+          <section class="settings-card" data-card="setup-wizard">
+            <div class="settings-card-header">
+              <h2>Setup Wizard</h2>
+              <p>Restart the setup wizard and create a fresh vault.</p>
+            </div>
+            <div class="settings-row">
+              <button class="settings-btn outline" data-action="setup-wizard" type="button">Restart Setup Wizard</button>
             </div>
           </section>
 
@@ -263,6 +318,14 @@ export class SettingsPanel {
     this.statusRowsEl = root.querySelector('[data-role="status-rows"]') as HTMLElement;
     this.memoryQueryInput = root.querySelector('[data-role="memory-query"]') as HTMLInputElement;
     this.modelForm = root.querySelector('[data-form="model"]') as HTMLFormElement;
+    this.modelProviderSelect = this.modelForm.querySelector('select[name="provider"]') as HTMLSelectElement;
+    this.modelInput = this.modelForm.querySelector('input[name="model"]') as HTMLInputElement;
+    this.modelApiKeyInput = this.modelForm.querySelector('input[name="apiKey"]') as HTMLInputElement;
+    this.modelBaseUrlInput = this.modelForm.querySelector('input[name="baseUrl"]') as HTMLInputElement;
+    this.allowlistForm = root.querySelector('[data-form="allowlist"]') as HTMLFormElement;
+    this.allowlistListEl = root.querySelector('[data-role="allowlist-list"]') as HTMLElement;
+    this.allowlistCommandInput = this.allowlistForm.querySelector('input[name="command"]') as HTMLInputElement;
+    this.allowlistRegexInput = this.allowlistForm.querySelector('textarea[name="argsRegex"]') as HTMLTextAreaElement;
 
     const refreshBtn = root.querySelector('[data-action="refresh"]') as HTMLButtonElement | null;
     refreshBtn?.addEventListener('click', () => {
@@ -283,6 +346,31 @@ export class SettingsPanel {
       this.searchMemory();
     });
 
+    const openLogsBtn = root.querySelector('[data-action="open-logs"]') as HTMLButtonElement | null;
+    openLogsBtn?.addEventListener('click', () => {
+      this.openLogsFolder();
+    });
+
+    const setupWizardBtn = root.querySelector('[data-action="setup-wizard"]') as HTMLButtonElement | null;
+    setupWizardBtn?.addEventListener('click', () => {
+      const confirmed = window.confirm(
+        'Restart the setup wizard and create a new vault? This will overwrite your existing vault data.',
+      );
+      if (!confirmed) return;
+
+      if (!this.onStartSetupWizard) {
+        this.setBanner('Setup wizard is unavailable.', 'warn');
+        return;
+      }
+
+      this.setBanner('Launching setup wizard...', 'good');
+      this.onStartSetupWizard();
+      this.bridge.updateConfig({ onboardingComplete: false })
+        .catch((err) => {
+          this.setBanner(`Failed to mark onboarding incomplete: ${String(err)}`, 'warn');
+        });
+    });
+
     this.memoryQueryInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -290,15 +378,26 @@ export class SettingsPanel {
       }
     });
 
+    this.modelProviderSelect.addEventListener('change', () => {
+      this.applyModelDefaults();
+    });
+
     this.modelForm.addEventListener('submit', (event) => {
       event.preventDefault();
       this.submitModelForm();
+    });
+
+    this.allowlistForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.submitAllowlistForm();
     });
 
     const cards = root.querySelectorAll('.settings-card');
     cards.forEach((card, index) => {
       (card as HTMLElement).style.setProperty('--delay', `${index * 0.06}s`);
     });
+
+    this.applyModelDefaults();
 
     return root;
   }
@@ -311,10 +410,11 @@ export class SettingsPanel {
       this.bridge.getStatus(),
       this.bridge.getMemory(),
       this.bridge.listModels(),
+      this.bridge.getConfig(),
       this.bridge.listLogs(),
     ]);
 
-    const [pingRes, statusRes, memoryRes, modelsRes, logsRes] = results;
+    const [pingRes, statusRes, memoryRes, modelsRes, configRes, logsRes] = results;
 
     if (pingRes.status === 'fulfilled') {
       const ping = pingRes.value as { uptime: number };
@@ -336,6 +436,11 @@ export class SettingsPanel {
 
     if (modelsRes.status === 'fulfilled') {
       this.renderModels(modelsRes.value as ModelConfig[]);
+    }
+
+    if (configRes.status === 'fulfilled') {
+      const config = configRes.value as { commandAllowlist: Array<{ command: string; argsRegex: string[] }> };
+      this.renderAllowlist(config.commandAllowlist || []);
     }
 
     if (logsRes.status === 'fulfilled') {
@@ -385,22 +490,63 @@ export class SettingsPanel {
       return;
     }
 
+    if (providerRequiresApiKey(provider) && !apiKey) {
+      this.setBanner('API key is required for hosted providers.', 'warn');
+      return;
+    }
+
     try {
       await this.bridge.configureModel(
         provider,
         model,
         apiKey || undefined,
-        role === 'primary',
+        role,
         baseUrl || undefined,
         Number.isFinite(temperature) ? temperature : undefined,
       );
+
+      await this.bridge.updateConfig({
+        models: {
+          [role]: {
+            provider,
+            model,
+            baseUrl: baseUrl || undefined,
+            temperature: Number.isFinite(temperature) ? temperature : undefined,
+          },
+        },
+      });
+
+      if (apiKey) {
+        if (this.vault && this.vault.isUnlocked) {
+          await this.vault.set(`apikey:${role}`, apiKey);
+          const encrypted = await this.vault.exportEncrypted();
+          await this.bridge.saveVault(encrypted);
+        } else {
+          this.setBanner('Model saved, but vault is locked. API key was not persisted.', 'warn');
+        }
+      }
+
       this.setBanner('Model configuration saved.', 'good');
       this.modelForm.reset();
+      this.applyModelDefaults();
       const models = await this.bridge.listModels();
       this.renderModels(models);
     } catch (err) {
       this.setBanner(`Failed to save model: ${String(err)}`, 'warn');
     }
+  }
+
+  private applyModelDefaults(): void {
+    applyProviderDefaults(
+      {
+        provider: this.modelProviderSelect,
+        model: this.modelInput,
+        apiKey: this.modelApiKeyInput,
+        baseUrl: this.modelBaseUrlInput,
+      },
+      this.modelProviderSelect.value,
+      { force: true },
+    );
   }
 
   private renderModels(models: ModelConfig[]): void {
@@ -430,6 +576,79 @@ export class SettingsPanel {
       item.appendChild(left);
       item.appendChild(right);
       this.modelListEl.appendChild(item);
+    });
+  }
+
+  private async submitAllowlistForm(): Promise<void> {
+    const command = this.allowlistCommandInput.value.trim();
+    if (!command) {
+      this.setBanner('Command is required.', 'warn');
+      return;
+    }
+
+    const argsRegex = this.allowlistRegexInput.value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const entry = { command, argsRegex };
+    const next = [...this.allowlist];
+    const existingIndex = next.findIndex((item) => item.command === command);
+    if (existingIndex >= 0) {
+      next[existingIndex] = entry;
+    } else {
+      next.push(entry);
+    }
+
+    try {
+      await this.bridge.updateConfig({ commandAllowlist: next });
+      this.allowlistForm.reset();
+      this.renderAllowlist(next);
+      this.setBanner('Allowlist updated.', 'good');
+    } catch (err) {
+      this.setBanner(`Failed to update allowlist: ${String(err)}`, 'warn');
+    }
+  }
+
+  private renderAllowlist(entries: Array<{ command: string; argsRegex: string[] }>): void {
+    this.allowlist = entries;
+    this.allowlistListEl.textContent = '';
+    if (!entries || entries.length === 0) {
+      this.allowlistListEl.textContent = 'No commands allowlisted.';
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const item = document.createElement('div');
+      item.className = 'settings-list-item';
+
+      const left = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = entry.command;
+      const meta = document.createElement('span');
+      meta.textContent = entry.argsRegex.length ? entry.argsRegex.join(' | ') : 'no args allowed';
+      left.appendChild(title);
+      left.appendChild(document.createElement('br'));
+      left.appendChild(meta);
+
+      const right = document.createElement('button');
+      right.type = 'button';
+      right.className = 'settings-btn outline settings-inline-btn';
+      right.textContent = 'Remove';
+      right.addEventListener('click', async () => {
+        const next = this.allowlist.filter((item) => item.command !== entry.command);
+        try {
+          await this.bridge.updateConfig({ commandAllowlist: next });
+          this.renderAllowlist(next);
+          this.setBanner('Allowlist updated.', 'good');
+        } catch (err) {
+          this.setBanner(`Failed to update allowlist: ${String(err)}`, 'warn');
+        }
+      });
+
+      item.appendChild(left);
+      item.appendChild(right);
+      this.allowlistListEl.appendChild(item);
     });
   }
 
@@ -527,6 +746,20 @@ export class SettingsPanel {
     } catch (err) {
       this.logContentEl.textContent = 'Failed to load log.';
       this.setBanner(`Failed to load log: ${String(err)}`, 'warn');
+    }
+  }
+
+  private async openLogsFolder(): Promise<void> {
+    try {
+      const result = await this.bridge.getLogsDir();
+      const logsPath = result?.path || '';
+      if (!logsPath) {
+        this.setBanner('Logs folder not available.', 'warn');
+        return;
+      }
+      await open(logsPath);
+    } catch (err) {
+      this.setBanner(`Failed to open logs folder: ${String(err)}`, 'warn');
     }
   }
 

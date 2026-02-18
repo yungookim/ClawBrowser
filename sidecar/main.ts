@@ -1,13 +1,17 @@
 import * as readline from 'node:readline';
+import * as path from 'node:path';
 import { ModelManager, type Provider, type ModelRole } from './core/ModelManager.js';
 import { AgentCore } from './core/AgentCore.js';
 import { Swarm } from './core/Swarm.js';
 import { WorkspaceFiles } from './memory/WorkspaceFiles.js';
 import { DailyLog } from './memory/DailyLog.js';
+import { SystemLogger, type LogLevel } from './logging/SystemLogger.js';
 import { QmdMemory } from './memory/QmdMemory.js';
 import { Heartbeat } from './cron/Heartbeat.js';
 import { Reflection } from './cron/Reflection.js';
 import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
+import { ConfigStore, type AppConfig, type CommandAllowlistEntry } from './core/ConfigStore.js';
+import { CommandExecutor } from './core/CommandExecutor.js';
 
 // JSON-RPC 2.0 types
 interface JsonRpcRequest {
@@ -42,10 +46,14 @@ let agentCore: AgentCore;
 let swarm: Swarm;
 let workspace: WorkspaceFiles;
 let dailyLog: DailyLog;
+let systemLogger: SystemLogger;
 let qmdMemory: QmdMemory;
 let heartbeat: Heartbeat;
 let reflection: Reflection;
 let domAutomation: DomAutomation;
+let configStore: ConfigStore;
+let appConfig: AppConfig;
+let commandExecutor: CommandExecutor;
 
 // Send a JSON-RPC notification (no id, fire-and-forget)
 function sendNotification(method: string, params?: Record<string, unknown>): void {
@@ -77,32 +85,91 @@ function sendError(id: number | string | null, code: number, message: string): v
   process.stdout.write(JSON.stringify(response) + '\n');
 }
 
+function isDomAutomationResult(value: unknown): value is DomAutomationResult {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.requestId === 'string'
+    && typeof record.ok === 'boolean'
+    && Array.isArray(record.results);
+}
+
 /** Initialize all subsystems. */
 async function boot(): Promise<void> {
+  systemLogger = new SystemLogger();
+  try {
+    await systemLogger.initialize();
+    systemLogger.attachConsole();
+  } catch (err) {
+    console.error('[sidecar] System logger init failed:', err);
+  }
+
   console.error('[sidecar] Booting subsystems...');
 
   // Core
   modelManager = new ModelManager();
-  agentCore = new AgentCore(modelManager);
+  configStore = new ConfigStore();
+  appConfig = await configStore.load();
+  commandExecutor = new CommandExecutor();
+  try {
+    commandExecutor.setAllowlist(appConfig.commandAllowlist);
+  } catch (err) {
+    console.error('[sidecar] Invalid allowlist, disabling:', err);
+    commandExecutor.setAllowlist([]);
+  }
+  agentCore = new AgentCore(modelManager, commandExecutor);
   swarm = new Swarm(modelManager);
 
-  // Memory
-  workspace = new WorkspaceFiles();
+  await configureWorkspace(appConfig.workspacePath);
+
+  // Configure models from persisted config (no API keys at rest)
+  for (const [role, config] of Object.entries(appConfig.models || {})) {
+    if (!config) continue;
+    modelManager.configure({ ...config, role: role as ModelRole });
+  }
+
+  console.error('[sidecar] All subsystems booted');
+}
+
+async function configureWorkspace(workspacePath: string | null): Promise<void> {
+  const resolvedWorkspace = workspacePath || undefined;
+
+  workspace = new WorkspaceFiles(resolvedWorkspace);
   await workspace.initialize();
-  dailyLog = new DailyLog();
+
+  const workspaceDir = workspace.getWorkspaceDir();
+  const logsDir = path.join(workspaceDir, 'logs');
+  const systemLogsDir = path.join(logsDir, 'system');
+  const memoryDb = path.join(workspaceDir, 'memory', 'index.sqlite');
+
+  dailyLog = new DailyLog(logsDir);
   await dailyLog.initialize();
 
-  qmdMemory = new QmdMemory();
+  systemLogger.setLogsDir(systemLogsDir);
+  try {
+    await systemLogger.initialize();
+  } catch (err) {
+    console.error('[sidecar] System logger init failed:', err);
+  }
+
+  if (qmdMemory) {
+    qmdMemory.close();
+  }
+  qmdMemory = new QmdMemory(memoryDb);
   try {
     await qmdMemory.initialize();
   } catch (err) {
     console.error('[sidecar] qmd initialization failed (non-fatal):', err);
   }
 
-  // Cron
+  if (heartbeat) {
+    heartbeat.stop();
+  }
   heartbeat = new Heartbeat(workspace);
   heartbeat.start();
 
+  if (reflection) {
+    reflection.stop();
+  }
   reflection = new Reflection(workspace, dailyLog, modelManager);
   reflection.setMemoryHandler(async (memories) => {
     for (const mem of memories) {
@@ -111,7 +178,20 @@ async function boot(): Promise<void> {
   });
   reflection.start();
 
-  console.error('[sidecar] All subsystems booted');
+  commandExecutor?.setWorkspaceDir(workspaceDir);
+}
+
+function validateAllowlist(entries: CommandAllowlistEntry[]): void {
+  for (const entry of entries) {
+    const patterns = Array.isArray(entry.argsRegex) ? entry.argsRegex : [];
+    for (const pattern of patterns) {
+      try {
+        new RegExp(pattern);
+      } catch (err) {
+        throw new Error(`Invalid regex for ${entry.command}: ${pattern}`);
+      }
+    }
+  }
 }
 
 /** Register all JSON-RPC method handlers. */
@@ -123,6 +203,39 @@ function registerHandlers(): void {
     pong: true,
     uptime: Date.now() - startTime,
   }));
+
+  handlers.set('getConfig', async () => appConfig);
+
+  handlers.set('updateConfig', async (params) => {
+    const incoming = (params || {}) as Partial<AppConfig>;
+    if (incoming.commandAllowlist) {
+      validateAllowlist(incoming.commandAllowlist);
+    }
+
+    appConfig = await configStore.update(incoming);
+    if (incoming.commandAllowlist) {
+      commandExecutor.setAllowlist(appConfig.commandAllowlist);
+    }
+    if (incoming.workspacePath !== undefined) {
+      await configureWorkspace(appConfig.workspacePath);
+    }
+
+    return { status: 'ok', config: appConfig };
+  });
+
+  handlers.set('loadVault', async () => {
+    const data = await configStore.loadVault();
+    return { data };
+  });
+
+  handlers.set('saveVault', async (params) => {
+    const data = params.data as string;
+    if (!data || typeof data !== 'string') {
+      throw new Error('Invalid vault data');
+    }
+    await configStore.saveVault(data);
+    return { status: 'ok' };
+  });
 
   handlers.set('agentQuery', async (params) => {
     const userQuery = params.userQuery as string || '';
@@ -168,8 +281,11 @@ function registerHandlers(): void {
     const apiKey = params.apiKey as string | undefined;
     const baseUrl = params.baseUrl as string | undefined;
     const temperature = params.temperature as number | undefined;
-    const primary = params.primary as boolean ?? true;
-    const role: ModelRole = primary ? 'primary' : 'subagent';
+    const roleParam = params.role as ModelRole | undefined;
+    const primary = params.primary as boolean | undefined;
+    const role: ModelRole = roleParam === 'primary' || roleParam === 'secondary' || roleParam === 'subagent'
+      ? roleParam
+      : (primary ?? true ? 'primary' : 'subagent');
 
     modelManager.configure({
       provider,
@@ -181,6 +297,19 @@ function registerHandlers(): void {
     });
 
     return { status: 'ok' };
+  });
+
+  handlers.set('terminalExec', async (params) => {
+    const command = params.command as string;
+    const args = Array.isArray(params.args) ? params.args.map((arg) => String(arg)) : [];
+    const cwd = params.cwd as string | undefined;
+
+    if (!command) {
+      throw new Error('Command is required');
+    }
+
+    const result = await commandExecutor.execute(command, args, cwd);
+    return result;
   });
 
   handlers.set('tabUpdate', async (params) => {
@@ -223,6 +352,10 @@ function registerHandlers(): void {
     return { logs };
   });
 
+  handlers.set('getLogsDir', async () => {
+    return { path: dailyLog.getLogsDir() };
+  });
+
   handlers.set('readLog', async (params) => {
     const date = params.date as string | undefined;
     if (!date) return { date: '', content: '' };
@@ -230,13 +363,21 @@ function registerHandlers(): void {
     return { date, content };
   });
 
-  handlers.set('logClientEvent', async (params) => {
-    const entry = params.entry as string | undefined;
-    if (!entry || !entry.trim()) {
+  handlers.set('logSystemEvent', async (params) => {
+    const message = params.message as string | undefined;
+    if (!message || !message.trim()) {
       return { status: 'ignored' };
     }
-    await dailyLog.log(entry.trim());
-    return { status: 'ok' };
+    const levelRaw = String(params.level || 'error').toLowerCase();
+    const level = (['debug', 'info', 'warn', 'error'] as LogLevel[]).includes(levelRaw as LogLevel)
+      ? (levelRaw as LogLevel)
+      : 'error';
+    try {
+      await systemLogger.log(level, message.trim());
+      return { status: 'ok' };
+    } catch {
+      return { status: 'error' };
+    }
   });
 
   handlers.set('clearHistory', async () => {
@@ -271,7 +412,11 @@ function registerHandlers(): void {
   });
 
   handlers.set('domAutomationResult', async (params) => {
-    domAutomation.handleResult(params as DomAutomationResult);
+    if (!isDomAutomationResult(params)) {
+      console.error('[sidecar] Invalid domAutomationResult payload');
+      return { status: 'error' };
+    }
+    domAutomation.handleResult(params);
     return { status: 'ok' };
   });
 }

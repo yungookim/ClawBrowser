@@ -22,6 +22,7 @@ type DebugPayload = {
 };
 
 type ConsoleLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type SnapshotResult = {
   tabId: string;
   mime: string;
@@ -62,7 +63,7 @@ export class DebugCapture {
         try {
           const message = this.formatArgs(args);
           const entry = `[chrome-console] ${this.formatPairs({ level, message })}`;
-          this.log(entry);
+          this.log(this.consoleLevelToLogLevel(level), entry);
           this.sidecar.debugEvent({
             source: 'chrome',
             type: 'console',
@@ -89,7 +90,7 @@ export class DebugCapture {
         stack: event.error && (event.error as Error).stack ? String((event.error as Error).stack) : undefined,
       };
       const entry = `[chrome-error] ${this.formatPairs(payload)}`;
-      this.log(entry);
+      this.log('error', entry);
       this.sidecar.debugEvent({
         source: 'chrome',
         type: 'error',
@@ -102,7 +103,7 @@ export class DebugCapture {
     window.addEventListener('unhandledrejection', (event) => {
       const payload = { reason: this.safeStringify(event.reason) };
       const entry = `[chrome-unhandledrejection] ${this.formatPairs(payload)}`;
-      this.log(entry);
+      this.log('error', entry);
       this.sidecar.debugEvent({
         source: 'chrome',
         type: 'unhandledrejection',
@@ -136,7 +137,7 @@ export class DebugCapture {
           message: payload.message,
         };
         const entry = `[tab-console] ${this.formatPairs(data)}`;
-        this.log(entry);
+        this.log(this.consoleLevelToLogLevel(this.normalizeConsoleLevel(payload.level)), entry);
         this.sidecar.debugEvent({
           source: 'tab',
           type: 'console',
@@ -159,7 +160,7 @@ export class DebugCapture {
           textSample: payload.textSample,
         };
         const entry = `[tab-render] ${this.formatPairs(data)}`;
-        this.log(entry);
+        this.log('info', entry);
         this.sidecar.debugEvent({
           source: 'tab',
           type: 'render',
@@ -188,7 +189,7 @@ export class DebugCapture {
           stack: payload.stack,
         };
         const entry = `[tab-error] ${this.formatPairs(data)}`;
-        this.log(entry);
+        this.log('error', entry);
         this.sidecar.debugEvent({
           source: 'tab',
           type: 'error',
@@ -211,7 +212,7 @@ export class DebugCapture {
           reason: payload.reason,
         };
         const entry = `[tab-unhandledrejection] ${this.formatPairs(data)}`;
-        this.log(entry);
+        this.log('error', entry);
         this.sidecar.debugEvent({
           source: 'tab',
           type: 'unhandledrejection',
@@ -226,7 +227,7 @@ export class DebugCapture {
       }
       default: {
         const entry = `[tab-event] ${this.formatPairs({ ...base, type: payload.type })}`;
-        this.log(entry);
+        this.log('info', entry);
         this.sidecar.debugEvent({
           source: 'tab',
           type: payload.type,
@@ -312,15 +313,63 @@ export class DebugCapture {
     return text.length > max ? text.slice(0, max) + '...' : text;
   }
 
-  private log(entry: string): void {
+  private log(level: LogLevel, entry: string): void {
     if (!this.enabled || !entry) return;
+    if (!this.shouldLog(level)) return;
     if (this.logging) return;
     this.logging = true;
     const trimmed = this.truncate(this.normalize(entry), this.maxEntryLength);
-    this.sidecar.logClientEvent(trimmed).catch(() => {
+    this.sidecar.logSystemEvent(level, trimmed).catch(() => {
       // Ignore sidecar log failures.
     }).finally(() => {
       this.logging = false;
     });
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    return this.levelValue(level) >= this.levelValue('error');
+  }
+
+  private levelValue(level: LogLevel): number {
+    switch (level) {
+      case 'debug':
+        return 10;
+      case 'info':
+        return 20;
+      case 'warn':
+        return 30;
+      case 'error':
+        return 40;
+      default:
+        return 20;
+    }
+  }
+
+  private normalizeConsoleLevel(level?: string): ConsoleLevel {
+    switch (level) {
+      case 'error':
+      case 'warn':
+      case 'info':
+      case 'debug':
+      case 'log':
+        return level;
+      default:
+        return 'info';
+    }
+  }
+
+  private consoleLevelToLogLevel(level: ConsoleLevel): LogLevel {
+    switch (level) {
+      case 'error':
+        return 'error';
+      case 'warn':
+        return 'warn';
+      case 'debug':
+        return 'debug';
+      case 'log':
+      case 'info':
+      default:
+        return 'info';
+    }
   }
 }

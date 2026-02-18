@@ -1,6 +1,7 @@
-# Design: Logging Utility + Retention
+# Design: Logging Utility + Retention [COMPLETED]
 
 Date: 2026-02-18
+Status: COMPLETED
 
 ## Context
 ClawBrowser needs a logger with levels, daily file output, and one-week retention. There are two distinct log types:

@@ -1,7 +1,7 @@
-# Provider Defaults Auto-Population Design
+# Provider Defaults Auto-Population Design [COMPLETED]
 
 Date: 2026-02-18
-Status: Approved
+Status: COMPLETED
 
 ## Summary
 Add shared provider defaults that auto-populate model configuration fields when the provider changes. Apply the behavior in both Settings and Onboarding. Base URL is always overwritten with the provider default, and API key is required for non-local providers.
@@ -23,7 +23,7 @@ These defaults come from the vendors' OpenAI-compatible API documentation.
   - baseUrl: https://api.openai.com/v1
   - apiKeyRequired: true
 - anthropic
-  - baseUrl: https://api.anthropic.com/v1/
+  - baseUrl: https://api.anthropic.com
   - apiKeyRequired: true
 - groq
   - baseUrl: https://api.groq.com/openai/v1

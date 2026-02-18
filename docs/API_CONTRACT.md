@@ -69,11 +69,18 @@ Each message is a single JSON line terminated by newline.
 
 ```json
 {"jsonrpc":"2.0","method":"agentQuery","params":{"userQuery":"...","activeTabUrl":"...","activeTabTitle":"...","tabCount":3},"id":1}
-{"jsonrpc":"2.0","method":"configureModel","params":{"provider":"openai","model":"gpt-4o","apiKey":"sk-...","primary":true},"id":2}
+{"jsonrpc":"2.0","method":"configureModel","params":{"provider":"openai","model":"gpt-4o","apiKey":"sk-...","role":"primary"},"id":2}
 {"jsonrpc":"2.0","method":"tabUpdate","params":{"tabCount":3,"activeTabTitle":"Google"},"id":3}
 {"jsonrpc":"2.0","method":"triggerReflection","params":{},"id":4}
 {"jsonrpc":"2.0","method":"ping","params":{},"id":5}
 {"jsonrpc":"2.0","method":"domAutomation","params":{"tabId":"...","actions":[{"type":"click","target":"#login"}]},"id":6}
+{"jsonrpc":"2.0","method":"getConfig","params":{},"id":7}
+{"jsonrpc":"2.0","method":"updateConfig","params":{"commandAllowlist":[{"command":"codex","argsRegex":["^--project$","^.+$"]}]},"id":8}
+{"jsonrpc":"2.0","method":"loadVault","params":{},"id":9}
+{"jsonrpc":"2.0","method":"saveVault","params":{"data":"{...encrypted...}"},"id":10}
+{"jsonrpc":"2.0","method":"terminalExec","params":{"command":"codex","args":["--project","/path/to/app"]},"id":11}
+{"jsonrpc":"2.0","method":"getLogsDir","params":{},"id":12}
+{"jsonrpc":"2.0","method":"logSystemEvent","params":{"level":"error","message":"..."},"id":13}
 ```
 
 ### Responses (Sidecar -> Rust)
@@ -117,6 +124,7 @@ invoke('sidecar_send', { method: 'domAutomationResult', params: { requestId: str
 
 - Workspace: `~/.clawbrowser/workspace/`
 - Vault data: `~/.clawbrowser/vault.json`
-- Daily logs: `~/.clawbrowser/workspace/logs/YYYY-MM-DD.md`
+- Chat logs: `~/.clawbrowser/workspace/logs/YYYY-MM-DD.md`
+- System logs: `~/.clawbrowser/workspace/logs/system/YYYY-MM-DD.log`
 - qmd memory: `~/.clawbrowser/workspace/memory/`
 - App config: `~/.clawbrowser/config.json`

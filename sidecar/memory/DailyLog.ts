@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 const LOGS_DIR = path.join(os.homedir(), '.clawbrowser', 'workspace', 'logs');
+const RETENTION_DAYS = 7;
 
 /**
  * DailyLog manages timestamped daily log files at
@@ -10,6 +11,7 @@ const LOGS_DIR = path.join(os.homedir(), '.clawbrowser', 'workspace', 'logs');
  */
 export class DailyLog {
   private logsDir: string;
+  private lastPruneDate: string | null = null;
 
   constructor(logsDir?: string) {
     this.logsDir = logsDir || LOGS_DIR;
@@ -18,6 +20,7 @@ export class DailyLog {
   /** Ensure logs directory exists. */
   async initialize(): Promise<void> {
     await fs.mkdir(this.logsDir, { recursive: true });
+    await this.pruneOldLogs();
   }
 
   /** Get today's date as YYYY-MM-DD. */
@@ -51,6 +54,7 @@ export class DailyLog {
     }
 
     await fs.appendFile(filePath, line, 'utf-8');
+    await this.pruneOldLogs(dateStr);
   }
 
   /** Read today's log. Returns empty string if no log exists. */
@@ -78,5 +82,68 @@ export class DailyLog {
     } catch {
       return [];
     }
+  }
+
+  getLogsDir(): string {
+    return this.logsDir;
+  }
+
+  private async pruneOldLogs(todayOverride?: string): Promise<void> {
+    const todayStr = todayOverride || this.todayString();
+    if (this.lastPruneDate === todayStr) return;
+    this.lastPruneDate = todayStr;
+
+    const cutoff = this.subtractDays(todayStr, RETENTION_DAYS - 1);
+    let entries: string[] = [];
+    try {
+      entries = await fs.readdir(this.logsDir);
+    } catch {
+      return;
+    }
+
+    const deletions = entries
+      .filter((entry) => entry.endsWith('.md'))
+      .map((entry) => entry.replace('.md', ''))
+      .filter((dateStr) => this.isValidDate(dateStr) && dateStr < cutoff)
+      .map((dateStr) => fs.unlink(this.filePath(dateStr)).catch(() => {
+        // Ignore delete errors.
+      }));
+
+    await Promise.all(deletions);
+  }
+
+  private subtractDays(dateStr: string, days: number): string {
+    const date = this.parseDate(dateStr);
+    if (!date) return dateStr;
+    date.setUTCDate(date.getUTCDate() - days);
+    return this.dateString(date);
+  }
+
+  private dateString(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private parseDate(dateStr: string): Date | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() !== year
+      || date.getUTCMonth() + 1 !== month
+      || date.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return date;
+  }
+
+  private isValidDate(dateStr: string): boolean {
+    return this.parseDate(dateStr) !== null;
   }
 }

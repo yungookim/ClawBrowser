@@ -220,6 +220,12 @@
   font-size: 12px;
 }
 
+.settings-inline-btn {
+  align-self: center;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 button.settings-list-item {
   cursor: pointer;
   text-align: left;

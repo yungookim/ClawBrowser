@@ -10,6 +10,7 @@ describe('ModelManager', () => {
 
   it('should start with no configurations', () => {
     expect(manager.isConfigured('primary')).toBe(false);
+    expect(manager.isConfigured('secondary')).toBe(false);
     expect(manager.isConfigured('subagent')).toBe(false);
     expect(manager.listConfigs()).toEqual([]);
   });
@@ -62,9 +63,17 @@ describe('ModelManager', () => {
       role: 'subagent',
     });
 
+    manager.configure({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      apiKey: 'key-3',
+      role: 'secondary',
+    });
+
     expect(manager.isConfigured('primary')).toBe(true);
+    expect(manager.isConfigured('secondary')).toBe(true);
     expect(manager.isConfigured('subagent')).toBe(true);
-    expect(manager.listConfigs()).toHaveLength(2);
+    expect(manager.listConfigs()).toHaveLength(3);
   });
 
   it('should return undefined for unconfigured role model creation', () => {

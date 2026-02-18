@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    webview::WebviewBuilder, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview, WebviewUrl, Window,
+    webview::{NewWindowResponse, WebviewBuilder},
+    Emitter, Manager, PhysicalPosition, PhysicalSize, Webview, WebviewUrl, Window,
 };
 use crate::devtools;
 
@@ -10,6 +11,26 @@ const AGENT_PANEL_WIDTH: f64 = 320.0;
 const TAB_LIST_WIDTH: f64 = 200.0;
 const NAV_BAR_HEIGHT: f64 = 56.0;
 const BLANK_PAGE_PATH: &str = "blank.html";
+
+#[cfg(target_os = "macos")]
+fn user_agent_override() -> Option<&'static str> {
+    Some("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15")
+}
+
+#[cfg(target_os = "windows")]
+fn user_agent_override() -> Option<&'static str> {
+    Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0")
+}
+
+#[cfg(target_os = "linux")]
+fn user_agent_override() -> Option<&'static str> {
+    Some("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn user_agent_override() -> Option<&'static str> {
+    None
+}
 
 const DEBUG_INIT_SCRIPT: &str = r#"
 (() => {
@@ -122,6 +143,66 @@ const DEBUG_INIT_SCRIPT: &str = r#"
 })();
 "#;
 
+const LINK_INTERCEPT_SCRIPT: &str = r#"
+(() => {
+  if (window.__CLAW_LINK_INTERCEPT__) return;
+  window.__CLAW_LINK_INTERCEPT__ = true;
+
+  const TAB_ID = __TAB_ID__;
+
+  const emit = (url, reason) => {
+    try {
+      const api = window.__TAURI__ && window.__TAURI__.event;
+      if (!api || typeof api.emit !== 'function') return false;
+      api.emit('tab-open-request', { tabId: TAB_ID, url, reason });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const resolveUrl = (href) => {
+    try {
+      return new URL(href, document.baseURI).toString();
+    } catch {
+      return null;
+    }
+  };
+
+  const isMac = (() => {
+    const platform = navigator.platform || '';
+    const userAgent = navigator.userAgent || '';
+    return /Mac|iPhone|iPad|iPod/.test(platform) || /Macintosh|Mac OS X/.test(userAgent);
+  })();
+
+  const handler = (event) => {
+    if (!event) return;
+    const wantsNewTab = event.shiftKey || (isMac && event.metaKey);
+    if (!wantsNewTab) return;
+    if (event.defaultPrevented) return;
+    if (event.button !== 0) return;
+
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest('a[href]');
+    if (!link) return;
+
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    const url = resolveUrl(href);
+    if (!url) return;
+
+    if (!emit(url, 'shift-click')) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  document.addEventListener('click', handler, true);
+})();
+"#;
+
 fn debug_capture_enabled() -> bool {
     if cfg!(debug_assertions) {
         return true;
@@ -141,6 +222,11 @@ fn debug_init_script(tab_id: &str) -> Option<String> {
     }
     let tab_id_literal = serde_json::to_string(tab_id).unwrap_or_else(|_| "\"unknown\"".to_string());
     Some(DEBUG_INIT_SCRIPT.replace("__TAB_ID__", &tab_id_literal))
+}
+
+fn link_intercept_script(tab_id: &str) -> String {
+    let tab_id_literal = serde_json::to_string(tab_id).unwrap_or_else(|_| "\"unknown\"".to_string());
+    LINK_INTERCEPT_SCRIPT.replace("__TAB_ID__", &tab_id_literal)
 }
 
 fn normalize_tab_url(url: &url::Url) -> String {
@@ -189,10 +275,6 @@ fn content_bounds(window: &Window, state: &TabState) -> Result<(PhysicalPosition
     let width_px  = inner_size.width.saturating_sub(left_px.max(0) as u32);
     let height_px = inner_size.height.saturating_sub(top_px.max(0) as u32);
 
-    println!("[BOUNDS] content_bounds: inner={}x{} scale={} y_off={} left_l={} top_vp={} -> phys ({},{}) {}x{}",
-        inner_size.width, inner_size.height, scale, y_off,
-        left_logical, top_viewport, left_px, top_px, width_px, height_px);
-
     Ok((
         PhysicalPosition::new(left_px, top_px),
         PhysicalSize::new(width_px, height_px),
@@ -209,8 +291,6 @@ fn apply_bounds(window: &Window, webview: &Webview, state: &TabState) -> Result<
     webview
         .set_bounds(bounds)
         .map_err(|e| format!("Failed to set webview bounds: {}", e))?;
-    println!("[BOUNDS] apply_bounds: label={} pos=({},{}) size={}x{}",
-        webview.label(), position.x, position.y, size.width, size.height);
     Ok(())
 }
 
@@ -265,9 +345,13 @@ pub fn create_tab(
     };
 
     let mut builder = WebviewBuilder::new(&label, webview_url);
+    if let Some(user_agent) = user_agent_override() {
+        builder = builder.user_agent(user_agent);
+    }
     if let Some(script) = debug_init_script(&id) {
         builder = builder.initialization_script(script);
     }
+    builder = builder.initialization_script(link_intercept_script(&id));
 
     let app_handle = app.clone();
     let tab_id = id.clone();
@@ -298,6 +382,21 @@ pub fn create_tab(
         true // allow all navigations
     });
 
+    let app_handle3 = app.clone();
+    let tab_id3 = id.clone();
+    let builder = builder.on_new_window(move |url, _features| {
+        let url_str = normalize_tab_url(&url);
+        let _ = app_handle3.emit(
+            "tab-open-request",
+            serde_json::json!({
+                "tabId": tab_id3,
+                "url": url_str,
+                "reason": "new-window",
+            }),
+        );
+        NewWindowResponse::Deny
+    });
+
     // Hide all existing content webviews
     for existing_id in state.tabs.keys() {
         let existing_label = format!("tab-{}", existing_id);
@@ -307,8 +406,6 @@ pub fn create_tab(
     }
 
     // Add the new webview as a child of the main window
-    println!("[BOUNDS] create_tab: add_child with pos=({},{}) size={}x{}",
-        position.x, position.y, size.width, size.height);
     let webview = window
         .add_child(builder, position, size)
         .map_err(|e| format!("Failed to create webview: {}", e))?;
@@ -317,9 +414,6 @@ pub fn create_tab(
     let _ = webview.set_auto_resize(false);
 
     // Check bounds right after add_child
-    if let Ok(actual) = webview.bounds() {
-        println!("[BOUNDS] create_tab: AFTER add_child bounds={:?}", actual);
-    }
     apply_bounds(&window, &webview, state)?;
     devtools::watch_webview_devtools(app.clone(), label.clone());
 
@@ -471,16 +565,11 @@ pub fn reposition_webviews(
         size: size.into(),
     };
 
-    println!("[BOUNDS] reposition_webviews: pos={:?} size={:?} has_stored_bounds={}",
-        position, size, state.content_bounds.is_some());
     for tab_id in state.tabs.keys() {
         let label = format!("tab-{}", tab_id);
         if let Some(webview) = app.get_webview(&label) {
             let _ = webview.set_auto_resize(false);
             let _ = webview.set_bounds(bounds);
-            if let Ok(actual) = webview.bounds() {
-                println!("[BOUNDS] reposition READBACK: label={} actual={:?}", label, actual);
-            }
         }
     }
 
@@ -501,10 +590,6 @@ pub fn set_content_bounds(
     let inner_h_logical = inner_size.height as f64 / scale;
     let viewport_h = bounds.top + bounds.height;
     let y_off = (inner_h_logical - viewport_h).max(0.0);
-
-    println!("[BOUNDS] set_content_bounds: JS left={} top={} w={} h={} inner_h_logical={} viewport_h={} -> y_offset={}",
-        bounds.left, bounds.top, bounds.width, bounds.height,
-        inner_h_logical, viewport_h, y_off);
 
     state.chrome_y_offset = y_off;
     state.content_bounds = Some(bounds);
