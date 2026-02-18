@@ -1,0 +1,442 @@
+.settings-panel {
+  --settings-bg: #f7f2ea;
+  --settings-surface: #fffaf2;
+  --settings-border: rgba(15, 23, 42, 0.12);
+  --settings-text: #0f172a;
+  --settings-muted: #475569;
+  --settings-accent: #0f766e;
+  --settings-accent-strong: #115e59;
+  --settings-warm: #f97316;
+  --settings-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 28px 40px;
+  background: var(--settings-bg);
+  color: var(--settings-text);
+  overflow: auto;
+  font-family: "Space Grotesk", "Sora", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.settings-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(15, 118, 110, 0.18), transparent 45%),
+    radial-gradient(circle at 85% 10%, rgba(249, 115, 22, 0.2), transparent 40%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.04), transparent 60%);
+  pointer-events: none;
+}
+
+.settings-panel.visible {
+  display: flex;
+}
+
+.settings-shell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+}
+
+.settings-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--settings-muted);
+}
+
+.settings-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.settings-subtitle {
+  font-size: 13px;
+  color: var(--settings-muted);
+  max-width: 420px;
+  margin-top: 6px;
+}
+
+.settings-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-btn {
+  border: 1px solid var(--settings-border);
+  background: var(--settings-surface);
+  color: var(--settings-text);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.settings-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  border-color: rgba(15, 23, 42, 0.2);
+}
+
+.settings-btn.solid {
+  background: var(--settings-accent);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.settings-btn.solid:hover {
+  background: var(--settings-accent-strong);
+}
+
+.settings-btn.outline {
+  background: transparent;
+}
+
+.settings-status-banner {
+  padding: 10px 14px;
+  border: 1px solid var(--settings-border);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.settings-status-banner.good {
+  color: var(--settings-accent-strong);
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+.settings-status-banner.warn {
+  color: var(--settings-warm);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.settings-card {
+  background: var(--settings-surface);
+  border: 1px solid var(--settings-border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--settings-shadow);
+  animation: settings-fade-up 0.45s ease both;
+  animation-delay: var(--delay, 0s);
+}
+
+.settings-card-header h2 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.settings-card-header p {
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.settings-form {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--settings-muted);
+}
+
+.settings-input,
+.settings-select,
+.settings-textarea {
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: #ffffff;
+  color: var(--settings-text);
+  outline: none;
+}
+
+.settings-input:focus,
+.settings-select:focus,
+.settings-textarea:focus {
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2);
+}
+
+.settings-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.settings-list-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--settings-border);
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+}
+
+button.settings-list-item {
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-list-item strong {
+  font-size: 12px;
+}
+
+.settings-list-item span {
+  color: var(--settings-muted);
+}
+
+.settings-mono {
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--settings-border);
+}
+
+.settings-columns {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+}
+
+.settings-log-view {
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.cron-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.cron-card {
+  border: 1px solid var(--settings-border);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.cron-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cron-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.cron-desc {
+  font-size: 11px;
+  color: var(--settings-muted);
+}
+
+.cron-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--settings-muted);
+}
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  top: 3px;
+  left: 4px;
+  transition: transform 0.2s ease;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--settings-accent);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(16px);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.status-tile {
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.status-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--settings-muted);
+}
+
+.status-value {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.status-meta {
+  font-size: 11px;
+  color: var(--settings-muted);
+  margin-top: 4px;
+}
+
+.status-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+@keyframes settings-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .settings-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-panel {
+    --settings-bg: #0b0d10;
+    --settings-surface: rgba(17, 24, 39, 0.95);
+    --settings-border: rgba(148, 163, 184, 0.25);
+    --settings-text: #f8fafc;
+    --settings-muted: #94a3b8;
+    --settings-accent: #5eead4;
+    --settings-accent-strong: #2dd4bf;
+    --settings-warm: #fb923c;
+    --settings-shadow: 0 40px 80px rgba(2, 6, 23, 0.35);
+  }
+
+  .settings-input,
+  .settings-select,
+  .settings-textarea {
+    background: rgba(15, 23, 42, 0.8);
+    color: var(--settings-text);
+  }
+
+  .settings-status-banner {
+    background: rgba(15, 23, 42, 0.6);
+  }
+
+  .settings-list-item,
+  .cron-card,
+  .status-tile {
+    background: rgba(15, 23, 42, 0.65);
+  }
+
+  .settings-log-view {
+    background: rgba(15, 23, 42, 0.7);
+  }
+}

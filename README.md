@@ -27,6 +27,20 @@ Swap brains anytime. Your rules.
 Closed-source data vampires? Hard pass.  
 ClawBrowser is 100% open source (MIT), 10 MB tiny, and every single byte stays on your machine.
 
+### Comparative Overview
+
+|  | ClawBrowser | Comet | Atlas |
+| --- | --- | --- | --- |
+| AI integration | Architectural | Sidebar | Panel |
+| Behavior | Proactive | Reactive | Reactive |
+| Persistent memory | Yes | No | Limited |
+| Self-reflection | Nightly | None | None |
+| Model backends | Multiple / local | Perplexity only | OpenAI only |
+| Voice input | Local, on-device | Cloud-based | Cloud-based |
+| Data storage | Local, encrypted | Cloud | Cloud |
+| Source | Open (MIT) | Proprietary | Proprietary |
+| Install size | ~10 MB | ~500 MB | ~500 MB |
+
 ### Why It Feels Like Magic
 - Logs in, fills forms, drags data between tabs like a boss  
 - Voice that runs locally — talk naturally, nothing leaves your laptop  

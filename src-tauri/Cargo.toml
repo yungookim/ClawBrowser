@@ -3,6 +3,9 @@ name = "clawbrowser"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+devtools = ["tauri/devtools"]
+
 [dependencies]
 tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-shell = "2"
@@ -14,3 +17,7 @@ url = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.3"
+objc2-web-kit = "0.3.2"

@@ -1,15 +1,49 @@
 :root {
-  --bg: #1e1e2e;
-  --surface: #252536;
-  --surface-hover: #2e2e42;
-  --border: #3a3a50;
-  --text: #e0e0e0;
-  --text-muted: #8888a0;
-  --accent: #7c6ff7;
-  --accent-hover: #6b5ce6;
-  --danger: #e05565;
-  --radius: 6px;
-  --radius-sm: 4px;
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --surface: #f6f6f6;
+  --surface-hover: #ededed;
+  --border: #dcdcdc;
+  --text: #000000;
+  --text-muted: #5a5a5a;
+  --accent: #000000;
+  --accent-hover: #111111;
+  --danger: #000000;
+  --contrast-bg: #000000;
+  --contrast-text: #ffffff;
+  --contrast-hover: #111111;
+  --focus-ring: rgba(0, 0, 0, 0.2);
+  --highlight: rgba(0, 0, 0, 0.05);
+  --bg-gradient: linear-gradient(180deg, #ffffff 0%, #f2f2f2 100%);
+  --surface-gradient: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+  --noise-texture: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='1' stitchTiles='stitch'/></filter><rect width='80' height='80' filter='url(%23n)' opacity='0.05'/></svg>");
+  --noise-size: 120px 120px;
+  --radius: 0;
+  --radius-sm: 0;
+  --agent-width: 320px;
+  --tabs-width: 200px;
+  --nav-height: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #0b0b0b;
+    --surface-hover: #141414;
+    --border: #1f1f1f;
+    --text: #ffffff;
+    --text-muted: #b0b0b0;
+    --accent: #ffffff;
+    --accent-hover: #f0f0f0;
+    --danger: #ffffff;
+    --contrast-bg: #ffffff;
+    --contrast-text: #000000;
+    --contrast-hover: #f0f0f0;
+    --focus-ring: rgba(255, 255, 255, 0.2);
+    --highlight: rgba(255, 255, 255, 0.06);
+    --bg-gradient: linear-gradient(180deg, #0c0c0c 0%, #000000 100%);
+    --surface-gradient: linear-gradient(180deg, #111111 0%, #0a0a0a 100%);
+  }
 }
 
 * {
@@ -19,7 +53,10 @@
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--bg-gradient), var(--noise-texture);
+  background-size: auto, var(--noise-size);
+  background-repeat: no-repeat, repeat;
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
@@ -29,30 +66,48 @@ body {
 
 #app {
   display: grid;
-  grid-template-rows: 38px 42px 1fr;
+  grid-template-columns: var(--agent-width) var(--tabs-width) 1fr;
+  grid-template-rows: 1fr;
   height: 100vh;
   width: 100vw;
+}
+
+/* ---------- Agent Panel ---------- */
+
+#agent-panel {
+  background-color: var(--surface);
+  background-image: var(--surface-gradient), var(--noise-texture);
+  background-size: auto, var(--noise-size);
+  background-repeat: no-repeat, repeat;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 /* ---------- Tab Bar ---------- */
 
 #tab-bar {
-  background: var(--surface);
+  background-color: var(--surface);
+  background-image: var(--surface-gradient), var(--noise-texture);
+  background-size: auto, var(--noise-size);
+  background-repeat: no-repeat, repeat;
   display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 4px;
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
 }
 
 .tabs-container {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   scrollbar-width: none;
 }
 
@@ -64,15 +119,13 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 8px 10px;
   border-radius: var(--radius);
   background: transparent;
   cursor: pointer;
-  min-width: 100px;
-  max-width: 200px;
-  height: 28px;
+  width: 100%;
+  height: 36px;
   transition: background 0.15s ease;
-  flex-shrink: 0;
 }
 
 .tab:hover {
@@ -111,8 +164,8 @@ body {
 }
 
 .tab-close:hover {
-  background: var(--danger);
-  color: white;
+  background: var(--contrast-bg);
+  color: var(--contrast-text);
 }
 
 .new-tab-btn {
@@ -120,12 +173,13 @@ body {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
-  padding: 4px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius);
-  flex-shrink: 0;
   transition: background 0.15s ease, color 0.15s ease;
+  width: 100%;
+  text-align: left;
 }
 
 .new-tab-btn:hover {
@@ -133,15 +187,35 @@ body {
   color: var(--text);
 }
 
+/* ---------- Content Column ---------- */
+
+#content-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+#content-spacer {
+  flex: 1;
+  background: var(--bg);
+  position: relative;
+}
+
 /* ---------- Nav Bar ---------- */
 
 #nav-bar {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--bg-gradient), var(--noise-texture);
+  background-size: auto, var(--noise-size);
+  background-repeat: no-repeat, repeat;
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 6px;
   border-bottom: 1px solid var(--border);
+  height: var(--nav-height);
+  flex-shrink: 0;
 }
 
 .nav-btn {
@@ -166,26 +240,16 @@ body {
   cursor: default;
 }
 
-.nav-btn.agent-toggle {
-  color: var(--accent);
-  font-size: 18px;
-}
-
-.nav-btn.agent-toggle:hover {
-  background: var(--accent);
-  color: white;
-}
-
-.nav-btn.agent-toggle.active {
-  background: var(--accent);
-  color: white;
+.nav-btn.settings-btn.active {
+  background: var(--contrast-bg);
+  color: var(--contrast-text);
 }
 
 .url-input {
   flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius);
   color: var(--text);
   font-size: 13px;
   padding: 6px 16px;
@@ -196,28 +260,9 @@ body {
 
 .url-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(124, 111, 247, 0.2);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .url-input::placeholder {
   color: var(--text-muted);
-}
-
-/* ---------- Agent Panel ---------- */
-
-#agent-panel {
-  position: fixed;
-  right: 0;
-  top: 80px;
-  bottom: 0;
-  width: 0;
-  overflow: hidden;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  transition: width 0.2s ease;
-  z-index: 100;
-}
-
-#agent-panel.open {
-  width: 380px;
 }

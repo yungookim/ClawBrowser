@@ -19,7 +19,7 @@
 .vault-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 48px 40px;
   width: 380px;
   max-width: 90vw;
@@ -62,10 +62,10 @@
 
 .vault-unlock-btn {
   width: 100%;
-  background: var(--accent);
+  background: var(--contrast-bg);
   border: none;
   border-radius: var(--radius);
-  color: white;
+  color: var(--contrast-text);
   font-size: 14px;
   font-weight: 500;
   padding: 10px;
@@ -74,7 +74,7 @@
 }
 
 .vault-unlock-btn:hover {
-  background: var(--accent-hover);
+  background: var(--contrast-hover);
 }
 
 .vault-error {

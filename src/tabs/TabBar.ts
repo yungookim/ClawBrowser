@@ -55,8 +55,6 @@ export class TabBar {
       tabsContainer.appendChild(tabEl);
     }
 
-    this.container.appendChild(tabsContainer);
-
     // New tab button
     const newTabBtn = document.createElement('button');
     newTabBtn.className = 'new-tab-btn';
@@ -66,6 +64,8 @@ export class TabBar {
     newTabBtn.addEventListener('click', () => {
       this.tabManager.createTab('about:blank');
     });
-    this.container.appendChild(newTabBtn);
+    tabsContainer.appendChild(newTabBtn);
+
+    this.container.appendChild(tabsContainer);
   }
 }

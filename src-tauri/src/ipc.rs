@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use tauri::State;
-use crate::tabs::{self, TabInfo, TabState};
+use crate::tabs::{self, ContentBounds, TabInfo, TabState};
 
 #[tauri::command]
 pub fn create_tab(
@@ -30,6 +30,15 @@ pub fn switch_tab(
 ) -> Result<(), String> {
     let mut state = state.lock().map_err(|e| e.to_string())?;
     tabs::switch_tab(&app, &mut state, &tab_id)
+}
+
+#[tauri::command]
+pub fn hide_all_tabs(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<TabState>>,
+) -> Result<(), String> {
+    let state = state.lock().map_err(|e| e.to_string())?;
+    tabs::hide_all_tabs(&app, &state)
 }
 
 #[tauri::command]
@@ -75,4 +84,14 @@ pub fn reposition_tabs(
 ) -> Result<(), String> {
     let state = state.lock().map_err(|e| e.to_string())?;
     tabs::reposition_webviews(&app, &state)
+}
+
+#[tauri::command]
+pub fn set_content_bounds(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<TabState>>,
+    bounds: ContentBounds,
+) -> Result<(), String> {
+    let mut state = state.lock().map_err(|e| e.to_string())?;
+    tabs::set_content_bounds(&app, &mut state, bounds)
 }
