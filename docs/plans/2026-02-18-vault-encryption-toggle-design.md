@@ -43,6 +43,11 @@ Add a Settings toggle that turns vault encryption on/off. When turned OFF, the a
   - Prompt for new passphrase (confirm match).
   - Encrypt plaintext entries and update config.
 
+## Onboarding & Setup Wizard
+- If `vaultEncryptionEnabled` is `false`, skip the passphrase step and create a plaintext vault.
+- If `vaultEncryptionEnabled` is `true`, keep the current passphrase step and encrypted vault flow.
+- The setup wizard uses the current config flag so restarts do not silently flip modes.
+
 ## Migration Flow
 - **ON -> OFF**
   1. Ensure encrypted vault is unlocked.
