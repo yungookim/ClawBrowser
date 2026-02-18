@@ -142,8 +142,16 @@ export class Swarm {
       };
     }
 
+    const toolDescriptions = this.toolRegistry?.describeTools() || '';
+
+    const systemPrompt = [
+      PLANNER_SYSTEM_PROMPT,
+      toolDescriptions ? `\nAvailable browser tools:\n${toolDescriptions}` : '',
+      'Plan steps that leverage these tools to accomplish the task.',
+    ].filter(Boolean).join('\n');
+
     const messages: BaseMessage[] = [
-      new SystemMessage(PLANNER_SYSTEM_PROMPT),
+      new SystemMessage(systemPrompt),
       new HumanMessage(state.task),
     ];
 
@@ -158,6 +166,7 @@ export class Swarm {
       if (jsonMatch) {
         const steps: string[] = JSON.parse(jsonMatch[0]);
         console.error(`[Swarm/Planner] ${steps.length} steps planned`);
+        this.sendNotification('swarmPlanReady', { steps, task: state.task });
         return {
           plan: steps,
           currentStep: 0,

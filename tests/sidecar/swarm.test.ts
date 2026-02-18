@@ -293,4 +293,54 @@ describe('Swarm', () => {
       expect(result.currentStep).toBe(1);
     });
   });
+
+  it('includes tool descriptions in planner prompt', async () => {
+    const toolRegistry = {
+      describeTools: vi.fn().mockReturnValue('- tab.create: Open a new tab.\n- tab.navigate: Navigate.'),
+      parseToolCall: vi.fn(),
+    };
+    const notify = vi.fn();
+
+    const toolSwarm = new Swarm(modelManager as any, toolRegistry as any, undefined, undefined, notify);
+
+    const model = { invoke: vi.fn().mockResolvedValue({ content: '["Step 1"]' }) };
+    modelManager.createModel.mockReturnValue(model);
+
+    await (toolSwarm as any).plannerNode({
+      task: 'Do something',
+      plan: [],
+      currentStep: 0,
+      stepResults: [],
+      finalResult: '',
+      context: {},
+      browserContext: {},
+    });
+
+    const systemMsg = model.invoke.mock.calls[0][0][0];
+    expect(systemMsg.content).toContain('tab.create');
+    expect(systemMsg.content).toContain('tab.navigate');
+  });
+
+  it('sends swarmPlanReady notification', async () => {
+    const notify = vi.fn();
+    const toolSwarm = new Swarm(modelManager as any, undefined, undefined, undefined, notify);
+
+    const model = { invoke: vi.fn().mockResolvedValue({ content: '["Step A", "Step B"]' }) };
+    modelManager.createModel.mockReturnValue(model);
+
+    await (toolSwarm as any).plannerNode({
+      task: 'Task',
+      plan: [],
+      currentStep: 0,
+      stepResults: [],
+      finalResult: '',
+      context: {},
+      browserContext: {},
+    });
+
+    expect(notify).toHaveBeenCalledWith('swarmPlanReady', {
+      steps: ['Step A', 'Step B'],
+      task: 'Task',
+    });
+  });
 });
