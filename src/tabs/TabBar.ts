@@ -31,9 +31,7 @@ export class TabBar {
       tabEl.dataset.tabId = tab.id;
 
       // Prevent tab from being draggable (window drag region)
-      tabEl.style.webkitAppRegion = 'no-drag';
-      // Cast for TypeScript compatibility with -webkit-app-region
-      (tabEl.style as Record<string, string>)['appRegion'] = 'no-drag';
+      tabEl.style.setProperty('-webkit-app-region', 'no-drag');
 
       const titleSpan = document.createElement('span');
       titleSpan.className = 'tab-title';
@@ -64,8 +62,7 @@ export class TabBar {
     newTabBtn.className = 'new-tab-btn';
     newTabBtn.textContent = '+';
     newTabBtn.title = 'New tab';
-    newTabBtn.style.webkitAppRegion = 'no-drag';
-    (newTabBtn.style as Record<string, string>)['appRegion'] = 'no-drag';
+    newTabBtn.style.setProperty('-webkit-app-region', 'no-drag');
     newTabBtn.addEventListener('click', () => {
       this.tabManager.createTab('about:blank');
     });
