@@ -1,0 +1,7 @@
+#!/bin/bash
+# ClawBrowser Agent Sidecar
+# Tauri shell plugin spawns this as the sidecar process.
+# It runs the compiled Node.js agent which communicates via stdin/stdout JSON-RPC.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SIDECAR_DIR="$(cd "$SCRIPT_DIR/../../sidecar" && pwd)"
+exec node "$SIDECAR_DIR/dist/main.js"

@@ -6,7 +6,7 @@
   "scripts": {
     "dev:frontend": "vite",
     "build:frontend": "vite build",
-    "build:sidecar": "cd sidecar && npx ncc build main.ts -o dist",
+    "build:sidecar": "cd sidecar && npx tsc",
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "npm run build:sidecar && tauri build",
