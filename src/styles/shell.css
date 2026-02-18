@@ -1,0 +1,223 @@
+:root {
+  --bg: #1e1e2e;
+  --surface: #252536;
+  --surface-hover: #2e2e42;
+  --border: #3a3a50;
+  --text: #e0e0e0;
+  --text-muted: #8888a0;
+  --accent: #7c6ff7;
+  --accent-hover: #6b5ce6;
+  --danger: #e05565;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+#app {
+  display: grid;
+  grid-template-rows: 38px 42px 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------- Tab Bar ---------- */
+
+#tab-bar {
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  min-width: 100px;
+  max-width: 200px;
+  height: 28px;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  background: var(--surface-hover);
+}
+
+.tab.active {
+  background: var(--bg);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.new-tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.new-tab-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ---------- Nav Bar ---------- */
+
+#nav-bar {
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.nav-btn.agent-toggle {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.nav-btn.agent-toggle:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.nav-btn.agent-toggle.active {
+  background: var(--accent);
+  color: white;
+}
+
+.url-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 16px;
+  outline: none;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.url-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 111, 247, 0.2);
+}
+
+.url-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---------- Agent Panel ---------- */
+
+#agent-panel {
+  position: fixed;
+  right: 0;
+  top: 80px;
+  bottom: 0;
+  width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  transition: width 0.2s ease;
+  z-index: 100;
+}
+
+#agent-panel.open {
+  width: 380px;
+}
