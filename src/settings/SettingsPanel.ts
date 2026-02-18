@@ -7,6 +7,7 @@ import { TabManager } from '../tabs/TabManager';
 import { Combobox } from '../ui/Combobox';
 import { Dropdown } from '../ui/Dropdown';
 import { Vault } from '../vault/Vault';
+import { DEFAULT_AGENT_CONTROL, type AgentControlSettings } from '../agent/types';
 
 type ModelConfig = {
   provider: string;
@@ -76,6 +77,28 @@ export class SettingsPanel {
   private allowlistCommandInput!: HTMLInputElement;
   private allowlistRegexInput!: HTMLTextAreaElement;
   private allowlist: Array<{ command: string; argsRegex: string[] }> = [];
+  private agentControlForm!: HTMLFormElement;
+  private agentEnabledInput!: HTMLInputElement;
+  private agentModeSelect!: HTMLSelectElement;
+  private agentKillSwitchInput!: HTMLInputElement;
+  private agentAutoGrantOriginsInput!: HTMLInputElement;
+  private agentAutoGrantPermissionsInput!: HTMLInputElement;
+  private agentAllowTerminalInput!: HTMLInputElement;
+  private agentAllowFilesystemInput!: HTMLInputElement;
+  private agentFilesystemScopeSelect!: HTMLSelectElement;
+  private agentAllowCookiesInput!: HTMLInputElement;
+  private agentAllowLocalStorageInput!: HTMLInputElement;
+  private agentAllowCredentialsInput!: HTMLInputElement;
+  private agentAllowDownloadsInput!: HTMLInputElement;
+  private agentAllowFileDialogsInput!: HTMLInputElement;
+  private agentClipboardSelect!: HTMLSelectElement;
+  private agentWindowControlInput!: HTMLInputElement;
+  private agentDevtoolsInput!: HTMLInputElement;
+  private agentDestructiveSelect!: HTMLSelectElement;
+  private agentActionLogEnabledInput!: HTMLInputElement;
+  private agentLogDetailSelect!: HTMLSelectElement;
+  private agentLogRetentionInput!: HTMLInputElement;
+  private agentStatusIndicatorInput!: HTMLInputElement;
   private onStartSetupWizard: (() => void) | null = null;
 
   constructor(
@@ -209,6 +232,212 @@ export class SettingsPanel {
               <button class="settings-btn solid" type="submit">Save Allowlist Entry</button>
             </form>
             <div class="settings-list" data-role="allowlist-list"></div>
+          </section>
+
+          <section class="settings-card" data-card="agent-control">
+            <div class="settings-card-header">
+              <h2>Agent Control</h2>
+              <p>Define how much control the agent has over the app.</p>
+            </div>
+            <form class="settings-form" data-form="agent-control">
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Enabled</strong>
+                  <span>Allow the agent to act inside the app.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-enabled" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Kill switch engaged</strong>
+                  <span>Immediately disables agent control.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-kill-switch" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Persistent indicator</strong>
+                  <span>Always show when the agent is active.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-status-indicator" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <label class="settings-field">
+                Autonomy mode
+                <select class="settings-select" data-role="agent-mode">
+                  <option value="max">Max autonomy</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="strict">Strict</option>
+                </select>
+              </label>
+              <div class="settings-divider"></div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Auto-grant origins</strong>
+                  <span>Skip per-origin and cross-origin prompts.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-auto-grant-origins" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Auto-grant camera/mic/geo/screen</strong>
+                  <span>Allow page permission prompts automatically.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-auto-grant-perms" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-divider"></div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Terminal access</strong>
+                  <span>Allow agent-run commands.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-terminal" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Filesystem access</strong>
+                  <span>Allow read/write within scope.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-filesystem" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <label class="settings-field">
+                Filesystem scope
+                <select class="settings-select" data-role="agent-filesystem-scope">
+                  <option value="sandbox">App sandbox + workspace</option>
+                  <option value="workspace_home">Workspace + home</option>
+                  <option value="unrestricted">Unrestricted</option>
+                </select>
+              </label>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Cookies</strong>
+                  <span>Allow cookie access.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-cookies" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Local storage</strong>
+                  <span>Allow localStorage/sessionStorage access.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-localstorage" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Saved credentials</strong>
+                  <span>Allow access to stored credentials.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-credentials" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Downloads</strong>
+                  <span>Allow download management.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-downloads" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>File dialogs</strong>
+                  <span>Auto-accept open/save dialogs.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-allow-filedialogs" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <label class="settings-field">
+                Clipboard access
+                <select class="settings-select" data-role="agent-clipboard">
+                  <option value="readwrite">Read + write</option>
+                  <option value="write">Write only</option>
+                  <option value="none">Disabled</option>
+                </select>
+              </label>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Window control</strong>
+                  <span>Resize, focus, and manage windows.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-window-control" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Devtools control</strong>
+                  <span>Allow opening and closing devtools.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-devtools" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <label class="settings-field">
+                Destructive confirmations
+                <select class="settings-select" data-role="agent-destructive-confirm">
+                  <option value="chat">Chat confirmation</option>
+                  <option value="modal">Modal confirmation</option>
+                  <option value="none">No confirmation</option>
+                </select>
+              </label>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-copy">
+                  <strong>Action log enabled</strong>
+                  <span>Record every agent action.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-role="agent-log-enabled" />
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <label class="settings-field">
+                Action log detail
+                <select class="settings-select" data-role="agent-log-detail">
+                  <option value="full">Full detail</option>
+                  <option value="redacted">Redacted</option>
+                  <option value="minimal">Minimal</option>
+                </select>
+              </label>
+              <label class="settings-field">
+                Log retention (days)
+                <input class="settings-input" type="number" min="1" data-role="agent-log-retention" />
+              </label>
+              <button class="settings-btn solid" type="submit">Save Agent Control</button>
+            </form>
           </section>
 
           <section class="settings-card" data-card="cron">
@@ -364,6 +593,29 @@ export class SettingsPanel {
     this.allowlistCommandInput = this.allowlistForm.querySelector('input[name="command"]') as HTMLInputElement;
     this.allowlistRegexInput = this.allowlistForm.querySelector('textarea[name="argsRegex"]') as HTMLTextAreaElement;
 
+    this.agentControlForm = root.querySelector('[data-form="agent-control"]') as HTMLFormElement;
+    this.agentEnabledInput = this.agentControlForm.querySelector('[data-role="agent-enabled"]') as HTMLInputElement;
+    this.agentKillSwitchInput = this.agentControlForm.querySelector('[data-role="agent-kill-switch"]') as HTMLInputElement;
+    this.agentStatusIndicatorInput = this.agentControlForm.querySelector('[data-role="agent-status-indicator"]') as HTMLInputElement;
+    this.agentModeSelect = this.agentControlForm.querySelector('[data-role="agent-mode"]') as HTMLSelectElement;
+    this.agentAutoGrantOriginsInput = this.agentControlForm.querySelector('[data-role="agent-auto-grant-origins"]') as HTMLInputElement;
+    this.agentAutoGrantPermissionsInput = this.agentControlForm.querySelector('[data-role="agent-auto-grant-perms"]') as HTMLInputElement;
+    this.agentAllowTerminalInput = this.agentControlForm.querySelector('[data-role="agent-allow-terminal"]') as HTMLInputElement;
+    this.agentAllowFilesystemInput = this.agentControlForm.querySelector('[data-role="agent-allow-filesystem"]') as HTMLInputElement;
+    this.agentFilesystemScopeSelect = this.agentControlForm.querySelector('[data-role="agent-filesystem-scope"]') as HTMLSelectElement;
+    this.agentAllowCookiesInput = this.agentControlForm.querySelector('[data-role="agent-allow-cookies"]') as HTMLInputElement;
+    this.agentAllowLocalStorageInput = this.agentControlForm.querySelector('[data-role="agent-allow-localstorage"]') as HTMLInputElement;
+    this.agentAllowCredentialsInput = this.agentControlForm.querySelector('[data-role="agent-allow-credentials"]') as HTMLInputElement;
+    this.agentAllowDownloadsInput = this.agentControlForm.querySelector('[data-role="agent-allow-downloads"]') as HTMLInputElement;
+    this.agentAllowFileDialogsInput = this.agentControlForm.querySelector('[data-role="agent-allow-filedialogs"]') as HTMLInputElement;
+    this.agentClipboardSelect = this.agentControlForm.querySelector('[data-role="agent-clipboard"]') as HTMLSelectElement;
+    this.agentWindowControlInput = this.agentControlForm.querySelector('[data-role="agent-window-control"]') as HTMLInputElement;
+    this.agentDevtoolsInput = this.agentControlForm.querySelector('[data-role="agent-devtools"]') as HTMLInputElement;
+    this.agentDestructiveSelect = this.agentControlForm.querySelector('[data-role="agent-destructive-confirm"]') as HTMLSelectElement;
+    this.agentActionLogEnabledInput = this.agentControlForm.querySelector('[data-role="agent-log-enabled"]') as HTMLInputElement;
+    this.agentLogDetailSelect = this.agentControlForm.querySelector('[data-role="agent-log-detail"]') as HTMLSelectElement;
+    this.agentLogRetentionInput = this.agentControlForm.querySelector('[data-role="agent-log-retention"]') as HTMLInputElement;
+
     const refreshBtn = root.querySelector('[data-action="refresh"]') as HTMLButtonElement | null;
     refreshBtn?.addEventListener('click', () => {
       this.refreshAll().catch((err) => {
@@ -430,6 +682,11 @@ export class SettingsPanel {
       this.submitAllowlistForm();
     });
 
+    this.agentControlForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.submitAgentControlForm();
+    });
+
     const cards = root.querySelectorAll('.settings-card');
     cards.forEach((card, index) => {
       (card as HTMLElement).style.setProperty('--delay', `${index * 0.06}s`);
@@ -437,6 +694,7 @@ export class SettingsPanel {
 
     this.applyModelDefaults();
     this.updateModelOptions();
+    this.renderAgentControl(DEFAULT_AGENT_CONTROL);
 
     return root;
   }
@@ -478,8 +736,12 @@ export class SettingsPanel {
     }
 
     if (configRes.status === 'fulfilled') {
-      const config = configRes.value as { commandAllowlist: Array<{ command: string; argsRegex: string[] }> };
+      const config = configRes.value as {
+        commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+        agentControl?: AgentControlSettings;
+      };
       this.renderAllowlist(config.commandAllowlist || []);
+      this.renderAgentControl(config.agentControl || DEFAULT_AGENT_CONTROL);
     }
 
     if (logsRes.status === 'fulfilled') {
@@ -686,6 +948,77 @@ export class SettingsPanel {
       item.appendChild(right);
       this.allowlistListEl.appendChild(item);
     });
+  }
+
+  private readAgentControlForm(): AgentControlSettings | null {
+    const retentionRaw = Number(this.agentLogRetentionInput.value);
+    if (!Number.isFinite(retentionRaw) || retentionRaw <= 0) {
+      this.setBanner('Log retention must be a positive number.', 'warn');
+      return null;
+    }
+
+    return {
+      enabled: this.agentEnabledInput.checked,
+      mode: this.agentModeSelect.value as AgentControlSettings['mode'],
+      killSwitch: this.agentKillSwitchInput.checked,
+      autoGrantOrigins: this.agentAutoGrantOriginsInput.checked,
+      autoGrantPagePermissions: this.agentAutoGrantPermissionsInput.checked,
+      allowTerminal: this.agentAllowTerminalInput.checked,
+      allowFilesystem: this.agentAllowFilesystemInput.checked,
+      filesystemScope: this.agentFilesystemScopeSelect.value as AgentControlSettings['filesystemScope'],
+      allowCookies: this.agentAllowCookiesInput.checked,
+      allowLocalStorage: this.agentAllowLocalStorageInput.checked,
+      allowCredentials: this.agentAllowCredentialsInput.checked,
+      allowDownloads: this.agentAllowDownloadsInput.checked,
+      allowFileDialogs: this.agentAllowFileDialogsInput.checked,
+      clipboardAccess: this.agentClipboardSelect.value as AgentControlSettings['clipboardAccess'],
+      allowWindowControl: this.agentWindowControlInput.checked,
+      allowDevtools: this.agentDevtoolsInput.checked,
+      destructiveConfirm: this.agentDestructiveSelect.value as AgentControlSettings['destructiveConfirm'],
+      actionLog: {
+        enabled: this.agentActionLogEnabledInput.checked,
+        detail: this.agentLogDetailSelect.value as AgentControlSettings['actionLog']['detail'],
+        retentionDays: Math.floor(retentionRaw),
+      },
+      statusIndicator: this.agentStatusIndicatorInput.checked,
+    };
+  }
+
+  private async submitAgentControlForm(): Promise<void> {
+    const settings = this.readAgentControlForm();
+    if (!settings) return;
+
+    try {
+      await this.bridge.updateConfig({ agentControl: settings });
+      this.setBanner('Agent control updated.', 'good');
+    } catch (err) {
+      this.setBanner(`Failed to update agent control: ${String(err)}`, 'warn');
+    }
+  }
+
+  private renderAgentControl(settings: AgentControlSettings): void {
+    const control = settings || DEFAULT_AGENT_CONTROL;
+    this.agentEnabledInput.checked = control.enabled;
+    this.agentKillSwitchInput.checked = control.killSwitch;
+    this.agentStatusIndicatorInput.checked = control.statusIndicator;
+    this.agentModeSelect.value = control.mode;
+    this.agentAutoGrantOriginsInput.checked = control.autoGrantOrigins;
+    this.agentAutoGrantPermissionsInput.checked = control.autoGrantPagePermissions;
+    this.agentAllowTerminalInput.checked = control.allowTerminal;
+    this.agentAllowFilesystemInput.checked = control.allowFilesystem;
+    this.agentFilesystemScopeSelect.value = control.filesystemScope;
+    this.agentAllowCookiesInput.checked = control.allowCookies;
+    this.agentAllowLocalStorageInput.checked = control.allowLocalStorage;
+    this.agentAllowCredentialsInput.checked = control.allowCredentials;
+    this.agentAllowDownloadsInput.checked = control.allowDownloads;
+    this.agentAllowFileDialogsInput.checked = control.allowFileDialogs;
+    this.agentClipboardSelect.value = control.clipboardAccess;
+    this.agentWindowControlInput.checked = control.allowWindowControl;
+    this.agentDevtoolsInput.checked = control.allowDevtools;
+    this.agentDestructiveSelect.value = control.destructiveConfirm;
+    this.agentActionLogEnabledInput.checked = control.actionLog.enabled;
+    this.agentLogDetailSelect.value = control.actionLog.detail;
+    this.agentLogRetentionInput.value = String(control.actionLog.retentionDays);
   }
 
   private renderWorkspaceFiles(files: Record<string, string>): void {

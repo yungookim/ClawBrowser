@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Command, Child } from '@tauri-apps/plugin-shell';
 import type { DomAutomationResult, DomAutomationRequest } from '../automation/domTypes';
+import type { AgentControlSettings } from './types';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -160,12 +161,14 @@ export class SidecarBridge {
     workspacePath: string | null;
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+    agentControl: AgentControlSettings;
   }> {
     return this.send('getConfig', {}) as Promise<{
       onboardingComplete: boolean;
       workspacePath: string | null;
       models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
       commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+      agentControl: AgentControlSettings;
     }>;
   }
 

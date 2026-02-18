@@ -240,6 +240,28 @@
   flex-wrap: wrap;
 }
 
+.settings-toggle-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--settings-muted);
+}
+
+.settings-toggle-copy strong {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--settings-text);
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;

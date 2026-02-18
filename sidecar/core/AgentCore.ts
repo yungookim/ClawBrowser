@@ -2,6 +2,8 @@ import { HumanMessage, AIMessage, SystemMessage, type BaseMessage } from '@langc
 import { ModelManager } from './ModelManager.js';
 import type { CommandExecutor } from './CommandExecutor.js';
 import type { ModelRole } from './ModelManager.js';
+import { ToolRegistry, type ParsedToolCall } from './ToolRegistry.js';
+import { AgentDispatcher } from './AgentDispatcher.js';
 
 const MAX_HISTORY = 40;
 
@@ -24,11 +26,20 @@ export interface AgentResponse {
 export class AgentCore {
   private modelManager: ModelManager;
   private commandExecutor: CommandExecutor | null;
+  private toolRegistry: ToolRegistry;
+  private dispatcher: AgentDispatcher | null;
   private history: BaseMessage[] = [];
 
-  constructor(modelManager: ModelManager, commandExecutor?: CommandExecutor) {
+  constructor(
+    modelManager: ModelManager,
+    commandExecutor?: CommandExecutor,
+    toolRegistry?: ToolRegistry,
+    dispatcher?: AgentDispatcher,
+  ) {
     this.modelManager = modelManager;
     this.commandExecutor = commandExecutor || null;
+    this.toolRegistry = toolRegistry || new ToolRegistry();
+    this.dispatcher = dispatcher || null;
   }
 
   /** Build the system prompt from workspace files and current context. */
@@ -39,8 +50,11 @@ export class AgentCore {
     parts.push('You help the user browse the web, manage tabs, fill forms, and complete tasks.');
     parts.push('You have access to the user\'s browser tabs and can execute actions on their behalf.');
     parts.push('Be concise, helpful, and proactive.');
-    parts.push('If you need to run a terminal command, respond ONLY with JSON:');
-    parts.push('{"tool":"terminalExec","command":"<command>","args":["arg1","arg2"],"cwd":"/path/optional"}');
+    parts.push('If you need to perform an action, respond ONLY with a single JSON tool call.');
+    parts.push('Format: {"tool":"<tool-name>","params":{...}}');
+    parts.push('Terminal: {"tool":"terminalExec","command":"<command>","args":["arg1","arg2"],"cwd":"/path/optional"}');
+    parts.push('Available tools:');
+    parts.push(this.toolRegistry.describeTools());
     parts.push('Only use allowlisted commands such as codex or claude code.');
 
     if (context.workspaceFiles) {
@@ -154,22 +168,12 @@ export class AgentCore {
       ? response.content
       : JSON.stringify(response.content);
 
-    const toolCall = this.parseToolCall(content);
+    const toolCall = this.toolRegistry.parseToolCall(content);
     if (!toolCall) {
       return content;
     }
 
-    if (!this.commandExecutor) {
-      return 'Tool execution unavailable.';
-    }
-
-    let toolResult: { ok: boolean; exitCode?: number; stdout?: string; stderr?: string; error?: string };
-    try {
-      const result = await this.commandExecutor.execute(toolCall.command, toolCall.args, toolCall.cwd);
-      toolResult = { ok: result.exitCode === 0, ...result };
-    } catch (err) {
-      toolResult = { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
+    const toolResult = await this.executeToolCall(toolCall);
 
     const followUp = await model.invoke([
       ...messages,
@@ -183,13 +187,49 @@ export class AgentCore {
       : JSON.stringify(followUp.content);
   }
 
-  private parseToolCall(content: string): { command: string; args: string[]; cwd?: string } | null {
-    const parsed = this.safeJsonParse(content);
-    if (!parsed || parsed.tool !== 'terminalExec') return null;
-    if (typeof parsed.command !== 'string') return null;
-    const args = Array.isArray(parsed.args) ? parsed.args.map((arg: unknown) => String(arg)) : [];
-    const cwd = typeof parsed.cwd === 'string' ? parsed.cwd : undefined;
-    return { command: parsed.command, args, cwd };
+  private async executeToolCall(toolCall: ParsedToolCall): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+  }> {
+    if (toolCall.kind === 'invalid') {
+      return { tool: toolCall.tool || 'unknown', ok: false, error: toolCall.error };
+    }
+
+    if (toolCall.kind === 'terminal') {
+      if (!this.commandExecutor) {
+        return { tool: toolCall.tool, ok: false, error: 'Tool execution unavailable.' };
+      }
+      try {
+        const result = await this.commandExecutor.execute(toolCall.command, toolCall.args, toolCall.cwd);
+        return { tool: toolCall.tool, ok: result.exitCode === 0, ...result };
+      } catch (err) {
+        return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    if (!this.dispatcher) {
+      return { tool: toolCall.tool, ok: false, error: 'Agent tool dispatcher unavailable.' };
+    }
+
+    try {
+      const result = await this.dispatcher.request({
+        capability: toolCall.capability,
+        action: toolCall.action,
+        params: toolCall.params,
+        destructive: toolCall.destructive,
+      });
+      if (result.ok) {
+        return { tool: toolCall.tool, ok: true, data: result.data };
+      }
+      return { tool: toolCall.tool, ok: false, error: result.error?.message || 'Agent action failed' };
+    } catch (err) {
+      return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   private safeJsonParse(content: string): Record<string, unknown> | null {

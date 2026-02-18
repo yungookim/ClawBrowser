@@ -208,3 +208,30 @@
   text-align: center;
   min-height: 16px;
 }
+
+.wizard-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wizard-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wizard-toggle-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wizard-toggle-row .wizard-input,
+.wizard-toggle-row .wizard-control {
+  max-width: 200px;
+}

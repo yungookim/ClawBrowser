@@ -12,6 +12,8 @@ import { Reflection } from './cron/Reflection.js';
 import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
 import { ConfigStore, type AppConfig, type CommandAllowlistEntry } from './core/ConfigStore.js';
 import { CommandExecutor } from './core/CommandExecutor.js';
+import { ToolRegistry } from './core/ToolRegistry.js';
+import { AgentDispatcher, type AgentResult } from './core/AgentDispatcher.js';
 
 // JSON-RPC 2.0 types
 interface JsonRpcRequest {
@@ -59,6 +61,8 @@ let domAutomation: DomAutomation;
 let configStore: ConfigStore;
 let appConfig: AppConfig;
 let commandExecutor: CommandExecutor;
+let toolRegistry: ToolRegistry;
+let agentDispatcher: AgentDispatcher;
 
 // Send a JSON-RPC notification (no id, fire-and-forget)
 function sendNotification(method: string, params?: Record<string, unknown>): void {
@@ -98,6 +102,13 @@ function isDomAutomationResult(value: unknown): value is DomAutomationResult {
     && Array.isArray(record.results);
 }
 
+function isAgentResult(value: unknown): value is AgentResult {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.requestId === 'string'
+    && typeof record.ok === 'boolean';
+}
+
 /** Initialize all subsystems. */
 async function boot(): Promise<void> {
   systemLogger = new SystemLogger();
@@ -121,7 +132,11 @@ async function boot(): Promise<void> {
     console.error('[sidecar] Invalid allowlist, disabling:', err);
     commandExecutor.setAllowlist([]);
   }
-  agentCore = new AgentCore(modelManager, commandExecutor);
+  toolRegistry = new ToolRegistry();
+  if (!agentDispatcher) {
+    agentDispatcher = new AgentDispatcher(sendNotification);
+  }
+  agentCore = new AgentCore(modelManager, commandExecutor, toolRegistry, agentDispatcher);
   swarm = new Swarm(modelManager);
 
   await configureWorkspace(appConfig.workspacePath);
@@ -207,6 +222,9 @@ function validateAllowlist(entries: CommandAllowlistEntry[]): void {
 function registerHandlers(): void {
   if (!domAutomation) {
     domAutomation = new DomAutomation(sendNotification);
+  }
+  if (!agentDispatcher) {
+    agentDispatcher = new AgentDispatcher(sendNotification);
   }
   handlers.set('ping', async () => ({
     pong: true,
@@ -426,6 +444,15 @@ function registerHandlers(): void {
       return { status: 'error' };
     }
     domAutomation.handleResult(params);
+    return { status: 'ok' };
+  });
+
+  handlers.set('agentResult', async (params) => {
+    if (!isAgentResult(params)) {
+      console.error('[sidecar] Invalid agentResult payload');
+      return { status: 'error' };
+    }
+    agentDispatcher.handleResult(params);
     return { status: 'ok' };
   });
 }

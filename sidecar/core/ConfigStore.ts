@@ -15,11 +15,46 @@ export interface CommandAllowlistEntry {
   argsRegex: string[];
 }
 
+export type AgentControlMode = 'max' | 'balanced' | 'strict';
+export type AgentFilesystemScope = 'sandbox' | 'workspace_home' | 'unrestricted';
+export type AgentClipboardAccess = 'readwrite' | 'write' | 'none';
+export type AgentLogDetail = 'full' | 'redacted' | 'minimal';
+export type AgentDestructiveConfirm = 'chat' | 'modal' | 'none';
+
+export interface AgentActionLogSettings {
+  enabled: boolean;
+  detail: AgentLogDetail;
+  retentionDays: number;
+}
+
+export interface AgentControlSettings {
+  enabled: boolean;
+  mode: AgentControlMode;
+  killSwitch: boolean;
+  autoGrantOrigins: boolean;
+  autoGrantPagePermissions: boolean;
+  allowTerminal: boolean;
+  allowFilesystem: boolean;
+  filesystemScope: AgentFilesystemScope;
+  allowCookies: boolean;
+  allowLocalStorage: boolean;
+  allowCredentials: boolean;
+  allowDownloads: boolean;
+  allowFileDialogs: boolean;
+  clipboardAccess: AgentClipboardAccess;
+  allowWindowControl: boolean;
+  allowDevtools: boolean;
+  destructiveConfirm: AgentDestructiveConfirm;
+  actionLog: AgentActionLogSettings;
+  statusIndicator: boolean;
+}
+
 export interface AppConfig {
   onboardingComplete: boolean;
   workspacePath: string | null;
   models: Partial<Record<ModelRole, StoredModelConfig>>;
   commandAllowlist: CommandAllowlistEntry[];
+  agentControl: AgentControlSettings;
 }
 
 export interface ConfigStoreOptions {
@@ -34,6 +69,31 @@ const DEFAULT_CONFIG: AppConfig = {
     { command: 'codex', argsRegex: ['^--project$', '^.+$'] },
     { command: 'claude', argsRegex: ['^code$', '^--project$', '^.+$'] },
   ],
+  agentControl: {
+    enabled: true,
+    mode: 'max',
+    killSwitch: false,
+    autoGrantOrigins: true,
+    autoGrantPagePermissions: false,
+    allowTerminal: true,
+    allowFilesystem: true,
+    filesystemScope: 'sandbox',
+    allowCookies: true,
+    allowLocalStorage: true,
+    allowCredentials: true,
+    allowDownloads: true,
+    allowFileDialogs: true,
+    clipboardAccess: 'readwrite',
+    allowWindowControl: true,
+    allowDevtools: true,
+    destructiveConfirm: 'chat',
+    actionLog: {
+      enabled: true,
+      detail: 'full',
+      retentionDays: 30,
+    },
+    statusIndicator: true,
+  },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,6 +101,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const PROVIDERS: Provider[] = ['openai', 'anthropic', 'groq', 'ollama', 'llamacpp'];
+const CONTROL_MODES: AgentControlMode[] = ['max', 'balanced', 'strict'];
+const FILESYSTEM_SCOPES: AgentFilesystemScope[] = ['sandbox', 'workspace_home', 'unrestricted'];
+const CLIPBOARD_ACCESS: AgentClipboardAccess[] = ['readwrite', 'write', 'none'];
+const LOG_DETAIL: AgentLogDetail[] = ['full', 'redacted', 'minimal'];
+const DESTRUCTIVE_CONFIRM: AgentDestructiveConfirm[] = ['chat', 'modal', 'none'];
 
 function normalizeModel(value: unknown): StoredModelConfig | undefined {
   if (!isRecord(value)) return undefined;
@@ -68,6 +133,81 @@ function normalizeAllowlist(value: unknown): CommandAllowlistEntry[] {
     .filter((entry): entry is CommandAllowlistEntry => Boolean(entry));
 }
 
+function normalizeAgentControl(value: unknown): AgentControlSettings {
+  const data = isRecord(value) ? value : {};
+  const actionLog = isRecord(data.actionLog) ? data.actionLog : {};
+  const retentionRaw = Number(actionLog.retentionDays);
+  const retentionDays = Number.isFinite(retentionRaw) && retentionRaw > 0
+    ? Math.floor(retentionRaw)
+    : DEFAULT_CONFIG.agentControl.actionLog.retentionDays;
+
+  return {
+    enabled: typeof data.enabled === 'boolean'
+      ? data.enabled
+      : DEFAULT_CONFIG.agentControl.enabled,
+    mode: typeof data.mode === 'string' && CONTROL_MODES.includes(data.mode as AgentControlMode)
+      ? data.mode as AgentControlMode
+      : DEFAULT_CONFIG.agentControl.mode,
+    killSwitch: typeof data.killSwitch === 'boolean'
+      ? data.killSwitch
+      : DEFAULT_CONFIG.agentControl.killSwitch,
+    autoGrantOrigins: typeof data.autoGrantOrigins === 'boolean'
+      ? data.autoGrantOrigins
+      : DEFAULT_CONFIG.agentControl.autoGrantOrigins,
+    autoGrantPagePermissions: typeof data.autoGrantPagePermissions === 'boolean'
+      ? data.autoGrantPagePermissions
+      : DEFAULT_CONFIG.agentControl.autoGrantPagePermissions,
+    allowTerminal: typeof data.allowTerminal === 'boolean'
+      ? data.allowTerminal
+      : DEFAULT_CONFIG.agentControl.allowTerminal,
+    allowFilesystem: typeof data.allowFilesystem === 'boolean'
+      ? data.allowFilesystem
+      : DEFAULT_CONFIG.agentControl.allowFilesystem,
+    filesystemScope: typeof data.filesystemScope === 'string' && FILESYSTEM_SCOPES.includes(data.filesystemScope as AgentFilesystemScope)
+      ? data.filesystemScope as AgentFilesystemScope
+      : DEFAULT_CONFIG.agentControl.filesystemScope,
+    allowCookies: typeof data.allowCookies === 'boolean'
+      ? data.allowCookies
+      : DEFAULT_CONFIG.agentControl.allowCookies,
+    allowLocalStorage: typeof data.allowLocalStorage === 'boolean'
+      ? data.allowLocalStorage
+      : DEFAULT_CONFIG.agentControl.allowLocalStorage,
+    allowCredentials: typeof data.allowCredentials === 'boolean'
+      ? data.allowCredentials
+      : DEFAULT_CONFIG.agentControl.allowCredentials,
+    allowDownloads: typeof data.allowDownloads === 'boolean'
+      ? data.allowDownloads
+      : DEFAULT_CONFIG.agentControl.allowDownloads,
+    allowFileDialogs: typeof data.allowFileDialogs === 'boolean'
+      ? data.allowFileDialogs
+      : DEFAULT_CONFIG.agentControl.allowFileDialogs,
+    clipboardAccess: typeof data.clipboardAccess === 'string' && CLIPBOARD_ACCESS.includes(data.clipboardAccess as AgentClipboardAccess)
+      ? data.clipboardAccess as AgentClipboardAccess
+      : DEFAULT_CONFIG.agentControl.clipboardAccess,
+    allowWindowControl: typeof data.allowWindowControl === 'boolean'
+      ? data.allowWindowControl
+      : DEFAULT_CONFIG.agentControl.allowWindowControl,
+    allowDevtools: typeof data.allowDevtools === 'boolean'
+      ? data.allowDevtools
+      : DEFAULT_CONFIG.agentControl.allowDevtools,
+    destructiveConfirm: typeof data.destructiveConfirm === 'string' && DESTRUCTIVE_CONFIRM.includes(data.destructiveConfirm as AgentDestructiveConfirm)
+      ? data.destructiveConfirm as AgentDestructiveConfirm
+      : DEFAULT_CONFIG.agentControl.destructiveConfirm,
+    actionLog: {
+      enabled: typeof actionLog.enabled === 'boolean'
+        ? actionLog.enabled
+        : DEFAULT_CONFIG.agentControl.actionLog.enabled,
+      detail: typeof actionLog.detail === 'string' && LOG_DETAIL.includes(actionLog.detail as AgentLogDetail)
+        ? actionLog.detail as AgentLogDetail
+        : DEFAULT_CONFIG.agentControl.actionLog.detail,
+      retentionDays,
+    },
+    statusIndicator: typeof data.statusIndicator === 'boolean'
+      ? data.statusIndicator
+      : DEFAULT_CONFIG.agentControl.statusIndicator,
+  };
+}
+
 function normalizeConfig(input: unknown): AppConfig {
   const data = isRecord(input) ? input : {};
   const onboardingComplete = typeof data.onboardingComplete === 'boolean'
@@ -91,6 +231,7 @@ function normalizeConfig(input: unknown): AppConfig {
 
   const commandAllowlist = normalizeAllowlist(data.commandAllowlist);
   const hasAllowlistField = Object.prototype.hasOwnProperty.call(data, 'commandAllowlist');
+  const agentControl = normalizeAgentControl(data.agentControl);
 
   return {
     onboardingComplete,
@@ -101,6 +242,7 @@ function normalizeConfig(input: unknown): AppConfig {
       : hasAllowlistField
         ? []
         : DEFAULT_CONFIG.commandAllowlist,
+    agentControl,
   };
 }
 
@@ -166,6 +308,16 @@ export class ConfigStore {
       commandAllowlist: partial.commandAllowlist
         ? normalizeAllowlist(partial.commandAllowlist)
         : current.commandAllowlist,
+      agentControl: partial.agentControl
+        ? normalizeAgentControl({
+          ...current.agentControl,
+          ...partial.agentControl,
+          actionLog: {
+            ...current.agentControl.actionLog,
+            ...(isRecord(partial.agentControl.actionLog) ? partial.agentControl.actionLog : {}),
+          },
+        })
+        : current.agentControl,
     };
 
     await this.save(updated);

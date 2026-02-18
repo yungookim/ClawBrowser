@@ -4,6 +4,7 @@ import { Combobox } from '../ui/Combobox';
 import { Dropdown } from '../ui/Dropdown';
 import { MatrixBackground } from '../ui/MatrixBackground';
 import { Vault } from '../vault/Vault';
+import { DEFAULT_AGENT_CONTROL, type AgentControlSettings } from '../agent/types';
 
 export type ModelRole = 'primary' | 'secondary' | 'subagent';
 
@@ -19,6 +20,7 @@ export interface ModelConfig {
 export interface WizardResult {
   workspacePath: string | null;
   models: Record<ModelRole, ModelConfig | null>;
+  agentControl: AgentControlSettings;
   password: string;
 }
 
@@ -30,6 +32,29 @@ type ModelInputs = {
   apiKey: HTMLInputElement;
   baseUrl: HTMLInputElement;
   combobox: Combobox;
+};
+
+type AgentControlInputs = {
+  enabled: HTMLInputElement;
+  mode: HTMLSelectElement;
+  autoGrantOrigins: HTMLInputElement;
+  autoGrantPagePermissions: HTMLInputElement;
+  allowTerminal: HTMLInputElement;
+  allowFilesystem: HTMLInputElement;
+  filesystemScope: HTMLSelectElement;
+  allowCookies: HTMLInputElement;
+  allowLocalStorage: HTMLInputElement;
+  allowCredentials: HTMLInputElement;
+  allowDownloads: HTMLInputElement;
+  allowFileDialogs: HTMLInputElement;
+  clipboardAccess: HTMLSelectElement;
+  allowWindowControl: HTMLInputElement;
+  allowDevtools: HTMLInputElement;
+  destructiveConfirm: HTMLSelectElement;
+  actionLogDetail: HTMLSelectElement;
+  actionLogRetention: HTMLInputElement;
+  actionLogEnabled: HTMLInputElement;
+  statusIndicator: HTMLInputElement;
 };
 
 const MODEL_CATALOG = modelCatalog as Record<string, string[]>;
@@ -47,6 +72,8 @@ export class Wizard {
     subagent: null,
   };
   private modelInputs: Record<ModelRole, ModelInputs> = {} as Record<ModelRole, ModelInputs>;
+  private agentControl: AgentControlSettings = DEFAULT_AGENT_CONTROL;
+  private agentControlInputs: AgentControlInputs | null = null;
   private workspacePath: string | null = null;
   private onComplete: WizardCompleteHandler | null = null;
 
@@ -84,7 +111,7 @@ export class Wizard {
     // Step indicators
     const indicators = document.createElement('div');
     indicators.className = 'wizard-indicators';
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const dot = document.createElement('div');
       dot.className = 'wizard-dot';
       dot.dataset.step = String(i);
@@ -96,6 +123,7 @@ export class Wizard {
     this.steps = [
       this.buildWelcomeStep(),
       this.buildModelStep(),
+      this.buildAgentControlStep(),
       this.buildPasswordStep(),
     ];
 
@@ -234,6 +262,88 @@ export class Wizard {
     return note;
   }
 
+  private buildToggleRow(titleText: string, bodyText: string, checked: boolean): { row: HTMLElement; input: HTMLInputElement } {
+    const row = document.createElement('div');
+    row.className = 'wizard-toggle-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'wizard-toggle-copy';
+
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    copy.appendChild(title);
+
+    const body = document.createElement('span');
+    body.textContent = bodyText;
+    copy.appendChild(body);
+
+    const toggle = document.createElement('label');
+    toggle.className = 'switch';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+
+    const track = document.createElement('span');
+    track.className = 'switch-track';
+
+    toggle.appendChild(input);
+    toggle.appendChild(track);
+
+    row.appendChild(copy);
+    row.appendChild(toggle);
+
+    return { row, input };
+  }
+
+  private buildSelectRow(titleText: string, bodyText: string, dropdown: Dropdown): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'wizard-toggle-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'wizard-toggle-copy';
+
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    copy.appendChild(title);
+
+    const body = document.createElement('span');
+    body.textContent = bodyText;
+    copy.appendChild(body);
+
+    row.appendChild(copy);
+    row.appendChild(dropdown.element);
+
+    return row;
+  }
+
+  private buildNumberRow(titleText: string, bodyText: string, value: number): { row: HTMLElement; input: HTMLInputElement } {
+    const row = document.createElement('div');
+    row.className = 'wizard-toggle-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'wizard-toggle-copy';
+
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    copy.appendChild(title);
+
+    const body = document.createElement('span');
+    body.textContent = bodyText;
+    copy.appendChild(body);
+
+    const input = document.createElement('input');
+    input.className = 'wizard-input';
+    input.type = 'number';
+    input.min = '1';
+    input.value = String(value);
+
+    row.appendChild(copy);
+    row.appendChild(input);
+
+    return { row, input };
+  }
+
   private buildModelStep(): HTMLElement {
     const step = document.createElement('div');
     step.className = 'wizard-step';
@@ -296,6 +406,330 @@ export class Wizard {
 
     step.appendChild(btnRow);
     return step;
+  }
+
+  private buildAgentControlStep(): HTMLElement {
+    const step = document.createElement('div');
+    step.className = 'wizard-step';
+
+    const title = document.createElement('h2');
+    title.className = 'wizard-title';
+    title.textContent = 'Agent Control';
+    step.appendChild(title);
+
+    const desc = document.createElement('p');
+    desc.className = 'wizard-desc';
+    desc.textContent = 'Choose how much control the agent has inside ClawBrowser.';
+    step.appendChild(desc);
+
+    const form = document.createElement('div');
+    form.className = 'wizard-model-form';
+
+    const coreSection = document.createElement('div');
+    coreSection.className = 'wizard-model-section';
+
+    const enabledRow = this.buildToggleRow(
+      'Enable agent control',
+      'Allow the agent to act inside the app.',
+      this.agentControl.enabled,
+    );
+    coreSection.appendChild(enabledRow.row);
+
+    const statusRow = this.buildToggleRow(
+      'Persistent status indicator',
+      'Show when the agent is active and expose the kill switch.',
+      this.agentControl.statusIndicator,
+    );
+    coreSection.appendChild(statusRow.row);
+
+    const modeDropdown = new Dropdown({
+      options: [
+        { value: 'max', label: 'Max autonomy' },
+        { value: 'balanced', label: 'Balanced' },
+        { value: 'strict', label: 'Strict' },
+      ],
+      className: 'wizard-control',
+      ariaLabel: 'Agent autonomy mode',
+    });
+    modeDropdown.field.value = this.agentControl.mode;
+    coreSection.appendChild(
+      this.buildSelectRow(
+        'Autonomy mode',
+        'Controls how permissive the agent is by default.',
+        modeDropdown,
+      ),
+    );
+
+    form.appendChild(coreSection);
+
+    const accessSection = document.createElement('div');
+    accessSection.className = 'wizard-model-section';
+
+    const terminalRow = this.buildToggleRow(
+      'Terminal access',
+      'Allow agent-run terminal commands.',
+      this.agentControl.allowTerminal,
+    );
+    accessSection.appendChild(terminalRow.row);
+
+    const filesystemRow = this.buildToggleRow(
+      'Filesystem access',
+      'Allow agent file read/write within the configured scope.',
+      this.agentControl.allowFilesystem,
+    );
+    accessSection.appendChild(filesystemRow.row);
+
+    const filesystemDropdown = new Dropdown({
+      options: [
+        { value: 'sandbox', label: 'App sandbox + workspace' },
+        { value: 'workspace_home', label: 'Workspace + home' },
+        { value: 'unrestricted', label: 'Unrestricted' },
+      ],
+      className: 'wizard-control',
+      ariaLabel: 'Filesystem scope',
+    });
+    filesystemDropdown.field.value = this.agentControl.filesystemScope;
+    accessSection.appendChild(
+      this.buildSelectRow(
+        'Filesystem scope',
+        'Default boundary for agent file operations.',
+        filesystemDropdown,
+      ),
+    );
+
+    const cookiesRow = this.buildToggleRow(
+      'Cookies access',
+      'Allow reading and writing cookies.',
+      this.agentControl.allowCookies,
+    );
+    accessSection.appendChild(cookiesRow.row);
+
+    const localStorageRow = this.buildToggleRow(
+      'Local storage access',
+      'Allow reading and writing localStorage/sessionStorage.',
+      this.agentControl.allowLocalStorage,
+    );
+    accessSection.appendChild(localStorageRow.row);
+
+    const credentialsRow = this.buildToggleRow(
+      'Saved credentials',
+      'Allow access to stored credentials.',
+      this.agentControl.allowCredentials,
+    );
+    accessSection.appendChild(credentialsRow.row);
+
+    const downloadsRow = this.buildToggleRow(
+      'Downloads',
+      'Allow the agent to manage downloads.',
+      this.agentControl.allowDownloads,
+    );
+    accessSection.appendChild(downloadsRow.row);
+
+    const fileDialogsRow = this.buildToggleRow(
+      'File dialogs',
+      'Auto-accept open/save dialogs.',
+      this.agentControl.allowFileDialogs,
+    );
+    accessSection.appendChild(fileDialogsRow.row);
+
+    const clipboardDropdown = new Dropdown({
+      options: [
+        { value: 'readwrite', label: 'Read + write' },
+        { value: 'write', label: 'Write only' },
+        { value: 'none', label: 'Disabled' },
+      ],
+      className: 'wizard-control',
+      ariaLabel: 'Clipboard access',
+    });
+    clipboardDropdown.field.value = this.agentControl.clipboardAccess;
+    accessSection.appendChild(
+      this.buildSelectRow(
+        'Clipboard access',
+        'Allow reading/writing clipboard contents.',
+        clipboardDropdown,
+      ),
+    );
+
+    form.appendChild(accessSection);
+
+    const automationSection = document.createElement('div');
+    automationSection.className = 'wizard-model-section';
+
+    const windowRow = this.buildToggleRow(
+      'Window control',
+      'Resize, focus, and manage windows.',
+      this.agentControl.allowWindowControl,
+    );
+    automationSection.appendChild(windowRow.row);
+
+    const devtoolsRow = this.buildToggleRow(
+      'Devtools control',
+      'Open/close devtools on demand.',
+      this.agentControl.allowDevtools,
+    );
+    automationSection.appendChild(devtoolsRow.row);
+
+    const originsRow = this.buildToggleRow(
+      'Auto-grant origins',
+      'Skip per-origin permission prompts.',
+      this.agentControl.autoGrantOrigins,
+    );
+    automationSection.appendChild(originsRow.row);
+
+    const permissionsRow = this.buildToggleRow(
+      'Auto-grant camera/mic/geo/screen',
+      'Allow page permission prompts without asking.',
+      this.agentControl.autoGrantPagePermissions,
+    );
+    automationSection.appendChild(permissionsRow.row);
+
+    form.appendChild(automationSection);
+
+    const safetySection = document.createElement('div');
+    safetySection.className = 'wizard-model-section';
+
+    const destructiveDropdown = new Dropdown({
+      options: [
+        { value: 'chat', label: 'Chat confirmation' },
+        { value: 'modal', label: 'Modal confirmation' },
+        { value: 'none', label: 'No confirmation' },
+      ],
+      className: 'wizard-control',
+      ariaLabel: 'Destructive confirmation',
+    });
+    destructiveDropdown.field.value = this.agentControl.destructiveConfirm;
+    safetySection.appendChild(
+      this.buildSelectRow(
+        'Destructive confirmations',
+        'How to confirm deletes, clears, and bulk actions.',
+        destructiveDropdown,
+      ),
+    );
+
+    const logEnabledRow = this.buildToggleRow(
+      'Action log enabled',
+      'Record every agent action for auditing.',
+      this.agentControl.actionLog.enabled,
+    );
+    safetySection.appendChild(logEnabledRow.row);
+
+    const logDetailDropdown = new Dropdown({
+      options: [
+        { value: 'full', label: 'Full detail' },
+        { value: 'redacted', label: 'Redacted' },
+        { value: 'minimal', label: 'Minimal' },
+      ],
+      className: 'wizard-control',
+      ariaLabel: 'Action log detail',
+    });
+    logDetailDropdown.field.value = this.agentControl.actionLog.detail;
+    safetySection.appendChild(
+      this.buildSelectRow(
+        'Action log detail',
+        'Choose how much detail is stored.',
+        logDetailDropdown,
+      ),
+    );
+
+    const retentionRow = this.buildNumberRow(
+      'Log retention (days)',
+      'How long to keep audit logs.',
+      this.agentControl.actionLog.retentionDays,
+    );
+    safetySection.appendChild(retentionRow.row);
+
+    form.appendChild(safetySection);
+
+    step.appendChild(form);
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'wizard-error';
+    step.appendChild(errorEl);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'wizard-btn-row';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'wizard-btn secondary';
+    backBtn.textContent = 'Back';
+    backBtn.addEventListener('click', () => this.showStep(2));
+    btnRow.appendChild(backBtn);
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'wizard-btn primary';
+    nextBtn.textContent = 'Next';
+    nextBtn.addEventListener('click', () => {
+      const collected = this.collectAgentControl(errorEl);
+      if (!collected) return;
+      this.agentControl = collected;
+      this.showStep(3);
+    });
+    btnRow.appendChild(nextBtn);
+
+    step.appendChild(btnRow);
+
+    this.agentControlInputs = {
+      enabled: enabledRow.input,
+      mode: modeDropdown.field,
+      autoGrantOrigins: originsRow.input,
+      autoGrantPagePermissions: permissionsRow.input,
+      allowTerminal: terminalRow.input,
+      allowFilesystem: filesystemRow.input,
+      filesystemScope: filesystemDropdown.field,
+      allowCookies: cookiesRow.input,
+      allowLocalStorage: localStorageRow.input,
+      allowCredentials: credentialsRow.input,
+      allowDownloads: downloadsRow.input,
+      allowFileDialogs: fileDialogsRow.input,
+      clipboardAccess: clipboardDropdown.field,
+      allowWindowControl: windowRow.input,
+      allowDevtools: devtoolsRow.input,
+      destructiveConfirm: destructiveDropdown.field,
+      actionLogDetail: logDetailDropdown.field,
+      actionLogRetention: retentionRow.input,
+      actionLogEnabled: logEnabledRow.input,
+      statusIndicator: statusRow.input,
+    };
+
+    return step;
+  }
+
+  private collectAgentControl(errorEl: HTMLElement): AgentControlSettings | null {
+    errorEl.textContent = '';
+    const inputs = this.agentControlInputs;
+    if (!inputs) return DEFAULT_AGENT_CONTROL;
+
+    const retentionRaw = Number(inputs.actionLogRetention.value);
+    if (!Number.isFinite(retentionRaw) || retentionRaw <= 0) {
+      errorEl.textContent = 'Log retention must be a positive number.';
+      return null;
+    }
+
+    return {
+      enabled: inputs.enabled.checked,
+      mode: inputs.mode.value as AgentControlSettings['mode'],
+      killSwitch: DEFAULT_AGENT_CONTROL.killSwitch,
+      autoGrantOrigins: inputs.autoGrantOrigins.checked,
+      autoGrantPagePermissions: inputs.autoGrantPagePermissions.checked,
+      allowTerminal: inputs.allowTerminal.checked,
+      allowFilesystem: inputs.allowFilesystem.checked,
+      filesystemScope: inputs.filesystemScope.value as AgentControlSettings['filesystemScope'],
+      allowCookies: inputs.allowCookies.checked,
+      allowLocalStorage: inputs.allowLocalStorage.checked,
+      allowCredentials: inputs.allowCredentials.checked,
+      allowDownloads: inputs.allowDownloads.checked,
+      allowFileDialogs: inputs.allowFileDialogs.checked,
+      clipboardAccess: inputs.clipboardAccess.value as AgentControlSettings['clipboardAccess'],
+      allowWindowControl: inputs.allowWindowControl.checked,
+      allowDevtools: inputs.allowDevtools.checked,
+      destructiveConfirm: inputs.destructiveConfirm.value as AgentControlSettings['destructiveConfirm'],
+      actionLog: {
+        enabled: inputs.actionLogEnabled.checked,
+        detail: inputs.actionLogDetail.value as AgentControlSettings['actionLog']['detail'],
+        retentionDays: Math.floor(retentionRaw),
+      },
+      statusIndicator: inputs.statusIndicator.checked,
+    };
   }
 
   private collectModels(errorEl: HTMLElement): Record<ModelRole, ModelConfig | null> | null {
@@ -425,6 +859,7 @@ export class Wizard {
           this.onComplete({
             workspacePath: this.workspacePath,
             models: this.models,
+            agentControl: this.agentControl,
             password,
           });
         }

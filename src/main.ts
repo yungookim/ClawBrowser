@@ -14,6 +14,7 @@ import { Vault } from './vault/Vault';
 import { VaultUI } from './vault/VaultUI';
 import { Wizard, type ModelRole } from './onboarding/Wizard';
 import { providerRequiresApiKey } from './shared/providerDefaults';
+import type { AgentControlSettings } from './agent/types';
 
 async function bootstrap(): Promise<void> {
   const tabManager = new TabManager();
@@ -208,6 +209,7 @@ async function bootstrap(): Promise<void> {
           onboardingComplete: true,
           workspacePath: result.workspacePath,
           models: modelsPayload,
+          agentControl: result.agentControl,
         });
 
         const encrypted = await vault.exportEncrypted();
@@ -260,6 +262,7 @@ async function bootstrap(): Promise<void> {
     workspacePath: string | null;
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
+    agentControl: AgentControlSettings;
   } | null = null;
 
   try {
