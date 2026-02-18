@@ -25,17 +25,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "externalBin": ["sidecar/clawbrowser-agent"]
   },
   "plugins": {
     "shell": {
-      "sidecar": true,
-      "scope": [
-        {
-          "name": "sidecar/clawbrowser-agent",
-          "sidecar": true
-        }
-      ]
+      "open": true
     },
     "updater": {
       "active": false,

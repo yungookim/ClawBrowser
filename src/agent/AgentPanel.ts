@@ -29,6 +29,10 @@ export class AgentPanel {
     });
   }
 
+  focusPrompt(): void {
+    this.chatView.focusInput();
+  }
+
   private async handleUserMessage(message: string): Promise<void> {
     this.chatView.addMessage('user', message);
     this.chatView.setLoading(true);

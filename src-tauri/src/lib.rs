@@ -3,6 +3,7 @@ use tauri::Manager;
 mod tabs;
 mod ipc;
 mod sidecar;
+mod devtools;
 
 pub fn run() {
     tauri::Builder::default()
@@ -12,6 +13,7 @@ pub fn run() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             println!("ClawBrowser started: {:?}", window.title());
+            devtools::watch_webview_devtools(app.handle().clone(), "main".to_string());
 
             // Listen for window resize to reposition content webviews
             let app_handle = app.handle().clone();
@@ -31,11 +33,13 @@ pub fn run() {
             ipc::create_tab,
             ipc::close_tab,
             ipc::switch_tab,
+            ipc::hide_all_tabs,
             ipc::navigate_tab,
             ipc::run_js_in_tab,
             ipc::list_tabs,
             ipc::get_active_tab,
             ipc::reposition_tabs,
+            ipc::set_content_bounds,
             sidecar::start_sidecar,
             sidecar::sidecar_send,
             sidecar::sidecar_receive,

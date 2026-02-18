@@ -7,22 +7,19 @@ export class NavBar {
   private backBtn!: HTMLButtonElement;
   private forwardBtn!: HTMLButtonElement;
   private refreshBtn!: HTMLButtonElement;
-  private agentToggleBtn!: HTMLButtonElement;
-  private onAgentToggle: (() => void) | null = null;
+  private settingsBtn!: HTMLButtonElement;
+  private onSettingsToggle: (() => void) | null = null;
 
-  constructor(container: HTMLElement, tabManager: TabManager) {
+  constructor(container: HTMLElement, tabManager: TabManager, options?: { onSettingsToggle?: () => void }) {
     this.container = container;
     this.tabManager = tabManager;
+    this.onSettingsToggle = options?.onSettingsToggle ?? null;
     this.build();
 
     // Subscribe to tab changes to update URL bar
     this.tabManager.onChange((_tabs, _activeId) => {
       this.updateState();
     });
-  }
-
-  setAgentToggleHandler(handler: () => void): void {
-    this.onAgentToggle = handler;
   }
 
   private build(): void {
@@ -79,19 +76,24 @@ export class NavBar {
     });
     this.container.appendChild(this.urlInput);
 
-    // Agent toggle button
-    this.agentToggleBtn = document.createElement('button');
-    this.agentToggleBtn.className = 'nav-btn agent-toggle';
-    this.agentToggleBtn.textContent = '\u2726';
-    this.agentToggleBtn.title = 'Toggle AI Agent';
-    this.agentToggleBtn.addEventListener('click', () => {
-      if (this.onAgentToggle) {
-        this.onAgentToggle();
+    // Settings button
+    this.settingsBtn = document.createElement('button');
+    this.settingsBtn.className = 'nav-btn settings-btn';
+    this.settingsBtn.textContent = 'Settings';
+    this.settingsBtn.title = 'Settings';
+    this.settingsBtn.addEventListener('click', () => {
+      if (this.onSettingsToggle) {
+        this.onSettingsToggle();
       }
     });
-    this.container.appendChild(this.agentToggleBtn);
+    this.container.appendChild(this.settingsBtn);
 
     this.updateState();
+  }
+
+  setSettingsOpen(open: boolean): void {
+    if (!this.settingsBtn) return;
+    this.settingsBtn.classList.toggle('active', open);
   }
 
   private updateState(): void {

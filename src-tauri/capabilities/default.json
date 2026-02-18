@@ -5,7 +5,15 @@
   "permissions": [
     "core:default",
     "core:event:default",
-    "shell:allow-spawn",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "sidecar/clawbrowser-agent",
+          "sidecar": true
+        }
+      ]
+    },
     "shell:allow-stdin-write",
     "shell:allow-kill",
     "shell:allow-open"

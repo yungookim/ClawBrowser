@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Command, Child } from '@tauri-apps/plugin-shell';
+import type { DomAutomationResult, DomAutomationRequest } from '../automation/domTypes';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -142,20 +143,117 @@ export class SidecarBridge {
     return result.reply;
   }
 
-  async configureModel(provider: string, model: string, apiKey: string, primary: boolean): Promise<void> {
-    await this.send('configureModel', { provider, model, apiKey, primary });
+  async configureModel(
+    provider: string,
+    model: string,
+    apiKey: string | undefined,
+    primary: boolean,
+    baseUrl?: string,
+    temperature?: number,
+  ): Promise<void> {
+    await this.send('configureModel', { provider, model, apiKey, primary, baseUrl, temperature });
   }
 
   async tabUpdate(tabCount: number, activeTabTitle: string): Promise<void> {
     await this.send('tabUpdate', { tabCount, activeTabTitle });
   }
 
-  async triggerReflection(): Promise<void> {
-    await this.send('triggerReflection', {});
+  async triggerReflection(): Promise<{ status: string; summary?: string; memoriesAdded?: number }> {
+    return this.send('triggerReflection', {}) as Promise<{ status: string; summary?: string; memoriesAdded?: number }>;
   }
 
   async ping(): Promise<{ pong: boolean; uptime: number }> {
     return this.send('ping', {}) as Promise<{ pong: boolean; uptime: number }>;
+  }
+
+  async getStatus(): Promise<{
+    uptime: number;
+    heartbeat: {
+      lastPulse: string;
+      uptime: number;
+      activeTabs: number;
+      activeTabTitle: string;
+      currentContext: string;
+      pendingActions: string[];
+    };
+    modelsConfigured: number;
+    historyLength: number;
+    memoryStatus?: { totalDocuments: number; needsEmbedding: number } | null;
+  }> {
+    return this.send('getStatus', {}) as Promise<{
+      uptime: number;
+      heartbeat: {
+        lastPulse: string;
+        uptime: number;
+        activeTabs: number;
+        activeTabTitle: string;
+        currentContext: string;
+        pendingActions: string[];
+      };
+      modelsConfigured: number;
+      historyLength: number;
+      memoryStatus?: { totalDocuments: number; needsEmbedding: number } | null;
+    }>;
+  }
+
+  async getMemory(query?: string): Promise<{
+    files: Record<string, string>;
+    memories: Array<{ id: string; content: string; title: string; score?: number }>;
+  }> {
+    return this.send('getMemory', { query }) as Promise<{
+      files: Record<string, string>;
+      memories: Array<{ id: string; content: string; title: string; score?: number }>;
+    }>;
+  }
+
+  async listModels(): Promise<Array<{
+    provider: string;
+    model: string;
+    apiKey?: string;
+    baseUrl?: string;
+    role: string;
+    temperature?: number;
+  }>> {
+    const result = await this.send('listModels', {}) as { models: Array<{
+      provider: string;
+      model: string;
+      apiKey?: string;
+      baseUrl?: string;
+      role: string;
+      temperature?: number;
+    }> };
+    return result.models;
+  }
+
+  async listLogs(): Promise<string[]> {
+    const result = await this.send('listLogs', {}) as { logs: string[] };
+    return result.logs;
+  }
+
+  async domAutomation(request: Omit<DomAutomationRequest, 'requestId'>): Promise<DomAutomationResult> {
+    return this.send('domAutomation', request) as Promise<DomAutomationResult>;
+  }
+
+  async readLog(date: string): Promise<{ date: string; content: string }> {
+    return this.send('readLog', { date }) as Promise<{ date: string; content: string }>;
+  }
+
+  async debugEvent(event: Record<string, unknown>): Promise<void> {
+    await this.send('debugEvent', event);
+  }
+
+  async storeScreenshot(payload: {
+    tabId: string;
+    url?: string;
+    title?: string;
+    mime: string;
+    dataBase64: string;
+  }): Promise<{ status: string; path?: string }> {
+    return this.send('storeScreenshot', payload) as Promise<{ status: string; path?: string }>;
+  }
+
+  async logClientEvent(entry: string): Promise<void> {
+    await this.send('logClientEvent', { entry });
   }
 
   private writeToSidecar(request: JsonRpcRequest): void {

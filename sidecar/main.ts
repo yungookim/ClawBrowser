@@ -7,6 +7,7 @@ import { DailyLog } from './memory/DailyLog.js';
 import { QmdMemory } from './memory/QmdMemory.js';
 import { Heartbeat } from './cron/Heartbeat.js';
 import { Reflection } from './cron/Reflection.js';
+import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
 
 // JSON-RPC 2.0 types
 interface JsonRpcRequest {
@@ -44,6 +45,7 @@ let dailyLog: DailyLog;
 let qmdMemory: QmdMemory;
 let heartbeat: Heartbeat;
 let reflection: Reflection;
+let domAutomation: DomAutomation;
 
 // Send a JSON-RPC notification (no id, fire-and-forget)
 function sendNotification(method: string, params?: Record<string, unknown>): void {
@@ -114,6 +116,9 @@ async function boot(): Promise<void> {
 
 /** Register all JSON-RPC method handlers. */
 function registerHandlers(): void {
+  if (!domAutomation) {
+    domAutomation = new DomAutomation(sendNotification);
+  }
   handlers.set('ping', async () => ({
     pong: true,
     uptime: Date.now() - startTime,
@@ -162,6 +167,7 @@ function registerHandlers(): void {
     const model = params.model as string;
     const apiKey = params.apiKey as string | undefined;
     const baseUrl = params.baseUrl as string | undefined;
+    const temperature = params.temperature as number | undefined;
     const primary = params.primary as boolean ?? true;
     const role: ModelRole = primary ? 'primary' : 'subagent';
 
@@ -171,6 +177,7 @@ function registerHandlers(): void {
       apiKey,
       baseUrl,
       role,
+      temperature,
     });
 
     return { status: 'ok' };
@@ -207,18 +214,65 @@ function registerHandlers(): void {
     return { files, memories };
   });
 
+  handlers.set('listModels', async () => {
+    return { models: modelManager.listConfigs() };
+  });
+
+  handlers.set('listLogs', async () => {
+    const logs = await dailyLog.listLogs();
+    return { logs };
+  });
+
+  handlers.set('readLog', async (params) => {
+    const date = params.date as string | undefined;
+    if (!date) return { date: '', content: '' };
+    const content = await dailyLog.readDate(date);
+    return { date, content };
+  });
+
+  handlers.set('logClientEvent', async (params) => {
+    const entry = params.entry as string | undefined;
+    if (!entry || !entry.trim()) {
+      return { status: 'ignored' };
+    }
+    await dailyLog.log(entry.trim());
+    return { status: 'ok' };
+  });
+
   handlers.set('clearHistory', async () => {
     agentCore.clearHistory();
     return { status: 'ok' };
   });
 
   handlers.set('getStatus', async () => {
+    let memoryStatus: { totalDocuments: number; needsEmbedding: number } | null = null;
+    try {
+      memoryStatus = qmdMemory.getStatus();
+    } catch {
+      memoryStatus = null;
+    }
     return {
       uptime: Date.now() - startTime,
       heartbeat: heartbeat.getState(),
       modelsConfigured: modelManager.listConfigs().length,
       historyLength: agentCore.getHistoryLength(),
+      memoryStatus,
     };
+  });
+
+  handlers.set('domAutomation', async (params) => {
+    return domAutomation.request(params as {
+      requestId?: string;
+      tabId?: string;
+      actions: Record<string, unknown>[];
+      timeoutMs?: number;
+      returnMode?: 'all' | 'last' | 'none';
+    });
+  });
+
+  handlers.set('domAutomationResult', async (params) => {
+    domAutomation.handleResult(params as DomAutomationResult);
+    return { status: 'ok' };
   });
 }
 
