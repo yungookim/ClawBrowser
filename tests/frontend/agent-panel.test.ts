@@ -150,4 +150,26 @@ describe('AgentPanel', () => {
     notificationHandler?.('swarmToolExecuted', { stepIndex: 1, tool: 'tab.navigate', ok: true });
     expect(chatMocks.addToolActivity).toHaveBeenCalledWith(1, 'tab.navigate', 'ok');
   });
+
+  it('shows retry message on swarmRecoveryAttempted', () => {
+    const bridge = {
+      agentQuery: vi.fn().mockResolvedValue('done'),
+      onNotification: (handler: (method: string, params: Record<string, unknown>) => void) => {
+        notificationHandler = handler;
+      },
+    } as any;
+
+    const tabManager = { getActiveTab: () => null, getTabs: () => [] } as any;
+    const container = document.createElement('div');
+    new AgentPanel(container, bridge, tabManager);
+
+    notificationHandler?.('swarmRecoveryAttempted', {
+      operation: 'executor',
+      error: 'Request timeout',
+      attempt: 1,
+      maxRetries: 2,
+    });
+
+    expect(chatMocks.addMessage).toHaveBeenCalledWith('agent', expect.stringContaining('Retrying'));
+  });
 });

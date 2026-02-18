@@ -37,8 +37,22 @@ export class AgentPanel {
       } else if (method === 'swarmStepCompleted') {
         const { stepIndex } = params as { stepIndex: number };
         this.chatView.updateStepStatus(stepIndex, 'done');
+      } else if (method === 'swarmReplan') {
+        const { newPlan, previousPlan } = params as { newPlan: string[]; previousPlan: string[]; newSteps: string[] };
+        // The completed steps are preserved; replace from the first changed index onward
+        const startIndex = previousPlan.findIndex((step, i) => newPlan[i] !== step);
+        const replaceFrom = startIndex >= 0 ? startIndex : previousPlan.length;
+        this.chatView.replacePlan(newPlan.slice(replaceFrom), replaceFrom);
       } else if (method === 'swarmComplete') {
         // Final result comes via the agentQuery response, nothing special needed here
+      } else if (method === 'swarmRecoveryAttempted') {
+        const { operation, error, attempt, maxRetries } = params as {
+          operation: string;
+          error: string;
+          attempt: number;
+          maxRetries: number;
+        };
+        this.chatView.addMessage('agent', `Retrying ${operation} (attempt ${attempt}/${maxRetries}): ${error}`);
       }
     });
   }
