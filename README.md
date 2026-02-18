@@ -1,4 +1,4 @@
-Looking for beta testers who like to live dangerously. DM me at https://x.com/dygk_0x1
+Like to live dangerously? Looking for beta testers. DM me at https://x.com/dygk_0x1
 
 # ClawBrowser  
 **Your browser just got claws, a brain, and a serious attitude.**
