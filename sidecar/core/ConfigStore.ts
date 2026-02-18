@@ -49,12 +49,19 @@ export interface AgentControlSettings {
   statusIndicator: boolean;
 }
 
+export interface AgentRecoverySettings {
+  maxRetries: number;
+  enabled: boolean;
+}
+
 export interface AppConfig {
   onboardingComplete: boolean;
   workspacePath: string | null;
   models: Partial<Record<ModelRole, StoredModelConfig>>;
   commandAllowlist: CommandAllowlistEntry[];
   agentControl: AgentControlSettings;
+  agentRecovery: AgentRecoverySettings;
+  vaultEncryptionEnabled: boolean;
 }
 
 export interface ConfigStoreOptions {
@@ -69,6 +76,11 @@ const DEFAULT_CONFIG: AppConfig = {
     { command: 'codex', argsRegex: ['^--project$', '^.+$'] },
     { command: 'claude', argsRegex: ['^code$', '^--project$', '^.+$'] },
   ],
+  vaultEncryptionEnabled: true,
+  agentRecovery: {
+    maxRetries: 2,
+    enabled: true,
+  },
   agentControl: {
     enabled: true,
     mode: 'max',
@@ -208,6 +220,20 @@ function normalizeAgentControl(value: unknown): AgentControlSettings {
   };
 }
 
+function normalizeAgentRecovery(value: unknown): AgentRecoverySettings {
+  const data = isRecord(value) ? value : {};
+  const maxRetriesRaw = Number(data.maxRetries);
+  const maxRetries = Number.isFinite(maxRetriesRaw) && maxRetriesRaw >= 0
+    ? Math.floor(maxRetriesRaw)
+    : DEFAULT_CONFIG.agentRecovery.maxRetries;
+  return {
+    maxRetries,
+    enabled: typeof data.enabled === 'boolean'
+      ? data.enabled
+      : DEFAULT_CONFIG.agentRecovery.enabled,
+  };
+}
+
 function normalizeConfig(input: unknown): AppConfig {
   const data = isRecord(input) ? input : {};
   const onboardingComplete = typeof data.onboardingComplete === 'boolean'
@@ -232,6 +258,10 @@ function normalizeConfig(input: unknown): AppConfig {
   const commandAllowlist = normalizeAllowlist(data.commandAllowlist);
   const hasAllowlistField = Object.prototype.hasOwnProperty.call(data, 'commandAllowlist');
   const agentControl = normalizeAgentControl(data.agentControl);
+  const agentRecovery = normalizeAgentRecovery(data.agentRecovery);
+  const vaultEncryptionEnabled = typeof data.vaultEncryptionEnabled === 'boolean'
+    ? data.vaultEncryptionEnabled
+    : DEFAULT_CONFIG.vaultEncryptionEnabled;
 
   return {
     onboardingComplete,
@@ -243,6 +273,8 @@ function normalizeConfig(input: unknown): AppConfig {
         ? []
         : DEFAULT_CONFIG.commandAllowlist,
     agentControl,
+    agentRecovery,
+    vaultEncryptionEnabled,
   };
 }
 
@@ -318,6 +350,12 @@ export class ConfigStore {
           },
         })
         : current.agentControl,
+      agentRecovery: partial.agentRecovery
+        ? normalizeAgentRecovery({ ...current.agentRecovery, ...partial.agentRecovery })
+        : current.agentRecovery,
+      vaultEncryptionEnabled: typeof partial.vaultEncryptionEnabled === 'boolean'
+        ? partial.vaultEncryptionEnabled
+        : current.vaultEncryptionEnabled,
     };
 
     await this.save(updated);
