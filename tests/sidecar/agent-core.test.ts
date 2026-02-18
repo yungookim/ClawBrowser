@@ -328,4 +328,107 @@ describe('AgentCore', () => {
     const result = await agentCore.classifyAndRoute({ userQuery: 'test' });
     expect(result).toEqual({ role: 'primary', complexity: 'simple', reason: 'fallback' });
   });
+
+  it('executes multiple tool calls in a loop (simple path)', async () => {
+    const toolRegistry = {
+      describeTools: vi.fn().mockReturnValue('tools list'),
+      parseToolCall: vi.fn(),
+    };
+
+    const dispatcher = {
+      request: vi.fn().mockResolvedValue({ ok: true, data: { status: 'done' } }),
+    };
+
+    modelManager = new ModelManager();
+    agentCore = new AgentCore(modelManager, undefined, toolRegistry as any, dispatcher as any);
+
+    modelManager.configure({
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'test-key',
+      role: 'primary',
+    });
+
+    // parseToolCall returns tool calls for first two responses, then null for the third
+    let parseCallCount = 0;
+    toolRegistry.parseToolCall.mockImplementation(() => {
+      parseCallCount++;
+      if (parseCallCount <= 2) {
+        return {
+          kind: 'agent',
+          tool: 'tab.create',
+          capability: 'tab',
+          action: 'create',
+          params: { url: `https://example.com/${parseCallCount}` },
+        };
+      }
+      return null;
+    });
+
+    let nonRouterCount = 0;
+    mockInvoke = vi.fn((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
+      }
+      nonRouterCount++;
+      if (nonRouterCount <= 2) {
+        return Promise.resolve({
+          content: `{"tool":"tab.create","params":{"url":"https://example.com/${nonRouterCount}"}}`,
+        });
+      }
+      return Promise.resolve({ content: 'All done!' });
+    });
+
+    vi.spyOn(modelManager, 'createModel').mockReturnValue({
+      invoke: mockInvoke,
+    } as any);
+
+    const response = await agentCore.query({ userQuery: 'Open two tabs' });
+    expect(dispatcher.request).toHaveBeenCalledTimes(2);
+    expect(response.reply).toBe('All done!');
+  });
+
+  it('stops tool loop after max iterations (5)', async () => {
+    const toolRegistry = {
+      describeTools: vi.fn().mockReturnValue('tools list'),
+      parseToolCall: vi.fn().mockReturnValue({
+        kind: 'agent',
+        tool: 'tab.create',
+        capability: 'tab',
+        action: 'create',
+        params: { url: 'https://example.com' },
+      }),
+    };
+
+    const dispatcher = {
+      request: vi.fn().mockResolvedValue({ ok: true, data: { status: 'done' } }),
+    };
+
+    modelManager = new ModelManager();
+    agentCore = new AgentCore(modelManager, undefined, toolRegistry as any, dispatcher as any);
+
+    modelManager.configure({
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'test-key',
+      role: 'primary',
+    });
+
+    mockInvoke = vi.fn((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
+      }
+      return Promise.resolve({
+        content: '{"tool":"tab.create","params":{"url":"https://example.com"}}',
+      });
+    });
+
+    vi.spyOn(modelManager, 'createModel').mockReturnValue({
+      invoke: mockInvoke,
+    } as any);
+
+    const response = await agentCore.query({ userQuery: 'Keep opening tabs' });
+    expect(dispatcher.request).toHaveBeenCalledTimes(5);
+    expect(response.reply).toBeDefined();
+  });
 });

@@ -30,6 +30,8 @@ export interface RouteDecision {
  * and conversation history management.
  */
 export class AgentCore {
+  private static readonly MAX_SIMPLE_TOOL_ITERATIONS = 5;
+
   private modelManager: ModelManager;
   private commandExecutor: CommandExecutor | null;
   private toolRegistry: ToolRegistry;
@@ -190,28 +192,32 @@ export class AgentCore {
     model: NonNullable<ReturnType<ModelManager['createModel']>>,
     messages: BaseMessage[],
   ): Promise<string> {
-    const response = await model.invoke(messages);
-    const content = typeof response.content === 'string'
-      ? response.content
-      : JSON.stringify(response.content);
+    let currentMessages = [...messages];
+    let lastContent = '';
 
-    const toolCall = this.toolRegistry.parseToolCall(content);
-    if (!toolCall) {
-      return content;
+    for (let i = 0; i < AgentCore.MAX_SIMPLE_TOOL_ITERATIONS; i++) {
+      const response = await model.invoke(currentMessages);
+      const content = typeof response.content === 'string'
+        ? response.content
+        : JSON.stringify(response.content);
+      lastContent = content;
+
+      const toolCall = this.toolRegistry.parseToolCall(content);
+      if (!toolCall) {
+        return content;
+      }
+
+      const toolResult = await this.executeToolCall(toolCall);
+
+      currentMessages = [
+        ...currentMessages,
+        new AIMessage(content),
+        new HumanMessage(JSON.stringify(toolResult)),
+      ];
     }
 
-    const toolResult = await this.executeToolCall(toolCall);
-
-    const followUp = await model.invoke([
-      ...messages,
-      new AIMessage(content),
-      new SystemMessage('Tool result (do not call tools again):'),
-      new HumanMessage(JSON.stringify(toolResult)),
-    ]);
-
-    return typeof followUp.content === 'string'
-      ? followUp.content
-      : JSON.stringify(followUp.content);
+    // Max iterations reached — return whatever the LLM last said
+    return lastContent;
   }
 
   private async executeToolCall(toolCall: ParsedToolCall): Promise<{
