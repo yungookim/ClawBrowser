@@ -17,12 +17,12 @@ export class TabManager {
   private listeners: TabChangeListener[] = [];
 
   async init(): Promise<void> {
-    await listen<{ tabId: string; url: string; title: string }>('tab-loaded', (event) => {
-      const { tabId, url, title } = event.payload;
+    await listen<{ tabId: string; url: string }>('tab-loaded', (event) => {
+      const { tabId, url } = event.payload;
       const tab = this.tabs.get(tabId);
       if (tab) {
         tab.url = url;
-        tab.title = title;
+        tab.title = this.titleFromUrl(url);
         this.notify();
       }
     });
@@ -40,6 +40,15 @@ export class TabManager {
         this.notify();
       }
     });
+  }
+
+  private titleFromUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname || 'New Tab';
+    } catch {
+      return url || 'New Tab';
+    }
   }
 
   onChange(listener: TabChangeListener): void {
