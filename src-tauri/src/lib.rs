@@ -10,6 +10,19 @@ pub fn run() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             println!("ClawBrowser started: {:?}", window.title());
+
+            // Listen for window resize to reposition content webviews
+            let app_handle = app.handle().clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::Resized(_) = event {
+                    let state_mutex = app_handle.state::<Mutex<tabs::TabState>>();
+                    let guard = state_mutex.lock();
+                    if let Ok(state) = guard {
+                        let _ = tabs::reposition_webviews(&app_handle, &state);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -20,6 +33,7 @@ pub fn run() {
             ipc::run_js_in_tab,
             ipc::list_tabs,
             ipc::get_active_tab,
+            ipc::reposition_tabs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ClawBrowser");
