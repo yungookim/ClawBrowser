@@ -51,14 +51,14 @@ export class ModelManager {
 
   /** Create a LangChain chat model instance from a config. */
   private createModelFromConfig(config: ModelConfig): BaseChatModel {
-    const temperature = config.temperature ?? 0.7;
+    const temperature = typeof config.temperature === 'number' ? config.temperature : undefined;
 
     switch (config.provider) {
       case 'openai':
         return new ChatOpenAI({
           modelName: config.model,
           apiKey: config.apiKey,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
           configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
         });
 
@@ -66,7 +66,7 @@ export class ModelManager {
         return new ChatAnthropic({
           modelName: config.model,
           anthropicApiKey: config.apiKey,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
           ...(config.baseUrl ? { anthropicApiUrl: config.baseUrl } : {}),
         });
 
@@ -74,14 +74,14 @@ export class ModelManager {
         return new ChatGroq({
           model: config.model,
           apiKey: config.apiKey,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
         });
 
       case 'ollama':
         // Ollama uses OpenAI-compatible API
         return new ChatOpenAI({
           modelName: config.model,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
           configuration: {
             baseURL: config.baseUrl || 'http://localhost:11434/v1',
           },
@@ -92,7 +92,7 @@ export class ModelManager {
         // llama.cpp server also uses OpenAI-compatible API
         return new ChatOpenAI({
           modelName: config.model,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
           configuration: {
             baseURL: config.baseUrl || 'http://localhost:8080/v1',
           },
