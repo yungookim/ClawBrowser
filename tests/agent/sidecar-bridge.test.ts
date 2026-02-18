@@ -191,4 +191,27 @@ describe('SidecarBridge', () => {
     const bridge = new SidecarBridge();
     await expect(bridge.send('ping')).rejects.toThrow('Sidecar not started');
   });
+
+  it('sends swarmCancel request', async () => {
+    let nextId = 1;
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'start_sidecar') return undefined;
+      if (cmd === 'sidecar_send') return nextId++;
+      return undefined;
+    });
+
+    const bridge = new SidecarBridge();
+    await bridge.start();
+
+    const cancelPromise = bridge.swarmCancel();
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const messageHandler = mocks.listeners.get('sidecar-message');
+    messageHandler?.({
+      payload: { jsonrpc: '2.0', id: 1, result: { status: 'ok' } },
+    });
+
+    await expect(cancelPromise).resolves.toBeUndefined();
+    expect(mocks.invoke).toHaveBeenCalledWith('sidecar_send', { method: 'swarmCancel', params: {} });
+  });
 });

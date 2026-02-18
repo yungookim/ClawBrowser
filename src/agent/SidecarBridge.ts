@@ -25,11 +25,17 @@ interface SidecarNotification {
 
 type NotificationHandler = (method: string, params: Record<string, unknown>) => void;
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+const METHOD_TIMEOUTS: Record<string, number> = {
+  agentQuery: 120_000,
+};
+
 export class SidecarBridge {
   private child: Child | null = null;
   private pendingRequests: Map<number, {
     resolve: (value: unknown) => void;
     reject: (reason: Error) => void;
+    timeoutId: number;
   }> = new Map();
   private notificationHandlers: NotificationHandler[] = [];
   private unlistenRequest: UnlistenFn | null = null;
@@ -74,6 +80,7 @@ export class SidecarBridge {
       this.ready = false;
       // Reject all pending requests
       for (const [, pending] of this.pendingRequests) {
+        clearTimeout(pending.timeoutId);
         pending.reject(new Error('Sidecar process exited'));
       }
       this.pendingRequests.clear();
@@ -103,12 +110,13 @@ export class SidecarBridge {
     this.ready = false;
 
     for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeoutId);
       pending.reject(new Error('Sidecar stopped'));
     }
     this.pendingRequests.clear();
   }
 
-  async send(method: string, params: unknown = {}): Promise<unknown> {
+  async send(method: string, params: unknown = {}, options: { timeoutMs?: number } = {}): Promise<unknown> {
     if (!this.ready) {
       throw new Error('Sidecar not started');
     }
@@ -117,15 +125,18 @@ export class SidecarBridge {
     const id: number = await invoke('sidecar_send', { method, params });
 
     const promise = new Promise<unknown>((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
+      const timeoutMs = typeof options.timeoutMs === 'number'
+        ? options.timeoutMs
+        : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
 
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        if (this.pendingRequests.has(id)) {
-          this.pendingRequests.delete(id);
-          reject(new Error(`Sidecar request timeout: ${method}`));
-        }
-      }, 30_000);
+      const timeoutId = window.setTimeout(() => {
+        const pending = this.pendingRequests.get(id);
+        if (!pending) return;
+        this.pendingRequests.delete(id);
+        pending.reject(new Error(`Sidecar request timeout: ${method}`));
+      }, timeoutMs);
+
+      this.pendingRequests.set(id, { resolve, reject, timeoutId });
     });
 
     return promise;
@@ -145,6 +156,10 @@ export class SidecarBridge {
     return result.reply;
   }
 
+  async swarmCancel(): Promise<void> {
+    await this.send('swarmCancel', {});
+  }
+
   async configureModel(
     provider: string,
     model: string,
@@ -162,6 +177,7 @@ export class SidecarBridge {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
     agentControl: AgentControlSettings;
+    vaultEncryptionEnabled: boolean;
   }> {
     return this.send('getConfig', {}) as Promise<{
       onboardingComplete: boolean;
@@ -169,6 +185,7 @@ export class SidecarBridge {
       models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
       commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
       agentControl: AgentControlSettings;
+      vaultEncryptionEnabled: boolean;
     }>;
   }
 
@@ -320,6 +337,7 @@ export class SidecarBridge {
       const response = msg as JsonRpcResponse;
       const pending = this.pendingRequests.get(response.id);
       if (pending) {
+        clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(response.id);
         if (response.error) {
           pending.reject(new Error(response.error.message));
