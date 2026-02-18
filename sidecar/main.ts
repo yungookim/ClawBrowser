@@ -288,14 +288,31 @@ function registerHandlers(): void {
     // Load workspace files for context
     const workspaceFiles = await workspace.loadAll();
 
-    // Query the agent
-    const response = await agentCore.query({
+    const context = {
       userQuery,
       activeTabUrl,
       activeTabTitle,
       tabCount,
       workspaceFiles,
-    });
+    };
+
+    // Route based on complexity
+    const route = await agentCore.classifyAndRoute(context);
+
+    let response: { reply: string };
+
+    if (route.complexity === 'complex') {
+      console.error(`[sidecar] Routing to Swarm (reason: ${route.reason})`);
+      const result = await swarm.execute(userQuery, {}, {
+        activeTabUrl,
+        activeTabTitle,
+        tabCount,
+      });
+      sendNotification('swarmComplete', { task: userQuery });
+      response = { reply: result };
+    } else {
+      response = await agentCore.query(context);
+    }
 
     // Log the response
     await dailyLog.log(`Agent reply: ${response.reply.substring(0, 100)}...`);
@@ -312,6 +329,11 @@ function registerHandlers(): void {
     await dailyLog.log(`Swarm result: ${result.substring(0, 100)}...`);
 
     return { result };
+  });
+
+  handlers.set('swarmCancel', async () => {
+    swarm.cancel();
+    return { status: 'ok' };
   });
 
   handlers.set('configureModel', async (params) => {
