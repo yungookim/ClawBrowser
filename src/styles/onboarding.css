@@ -1,0 +1,181 @@
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.wizard-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wizard-container {
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.wizard-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.wizard-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+
+.wizard-dot.active {
+  background: var(--accent);
+}
+
+.wizard-dot.completed {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px 36px;
+}
+
+.wizard-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.wizard-step h1.wizard-title {
+  color: var(--accent);
+  font-size: 28px;
+}
+
+.wizard-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.wizard-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.wizard-input:focus {
+  border-color: var(--accent);
+}
+
+.wizard-input::placeholder {
+  color: var(--text-muted);
+}
+
+select.wizard-input {
+  cursor: pointer;
+}
+
+.wizard-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.wizard-btn.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.wizard-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.wizard-btn.secondary {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.wizard-btn.secondary:hover {
+  background: var(--border);
+}
+
+.wizard-btn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.wizard-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  cursor: pointer;
+}
+
+.wizard-dropzone.dragover {
+  border-color: var(--accent);
+  background: rgba(124, 111, 247, 0.05);
+}
+
+.wizard-model-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wizard-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wizard-model-entry {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.wizard-error {
+  color: var(--danger);
+  font-size: 12px;
+  text-align: center;
+  min-height: 16px;
+}
