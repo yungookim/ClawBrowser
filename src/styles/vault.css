@@ -1,0 +1,85 @@
+.vault-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.vault-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vault-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 40px;
+  width: 380px;
+  max-width: 90vw;
+  text-align: center;
+}
+
+.vault-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.vault-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 32px;
+}
+
+.vault-password {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.15s ease;
+}
+
+.vault-password:focus {
+  border-color: var(--accent);
+}
+
+.vault-password::placeholder {
+  color: var(--text-muted);
+}
+
+.vault-unlock-btn {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vault-unlock-btn:hover {
+  background: var(--accent-hover);
+}
+
+.vault-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 12px;
+  min-height: 16px;
+}
