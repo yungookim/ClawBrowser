@@ -7,6 +7,7 @@ export class ChatView {
   private sendBtn: HTMLButtonElement;
   private loadingEl: HTMLElement;
   private onSend: SendHandler | null = null;
+  private activePlan: HTMLElement | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -63,6 +64,11 @@ export class ChatView {
     const msgEl = document.createElement('div');
     msgEl.className = `chat-message ${role}`;
 
+    const timestamp = document.createElement('div');
+    timestamp.className = 'chat-timestamp';
+    timestamp.textContent = this.formatTimestamp(new Date());
+    msgEl.appendChild(timestamp);
+
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble';
     bubble.textContent = content;
@@ -84,6 +90,54 @@ export class ChatView {
     this.input.setSelectionRange(end, end);
   }
 
+  addPlanMessage(steps: string[]): void {
+    const planEl = document.createElement('div');
+    planEl.className = 'chat-plan';
+
+    steps.forEach((step, i) => {
+      const stepEl = document.createElement('div');
+      stepEl.className = 'chat-plan-step pending';
+      stepEl.dataset.stepIndex = String(i);
+
+      const indicator = document.createElement('span');
+      indicator.className = 'step-indicator';
+      indicator.textContent = `${i + 1}.`;
+      stepEl.appendChild(indicator);
+
+      const label = document.createElement('span');
+      label.className = 'step-label';
+      label.textContent = step;
+      stepEl.appendChild(label);
+
+      planEl.appendChild(stepEl);
+    });
+
+    this.messageList.appendChild(planEl);
+    this.messageList.scrollTop = this.messageList.scrollHeight;
+    this.activePlan = planEl;
+  }
+
+  updateStepStatus(index: number, status: 'pending' | 'active' | 'done' | 'error'): void {
+    if (!this.activePlan) return;
+    const step = this.activePlan.querySelector(`[data-step-index="${index}"]`) as HTMLElement | null;
+    if (!step) return;
+    step.classList.remove('pending', 'active', 'done', 'error');
+    step.classList.add(status);
+    this.messageList.scrollTop = this.messageList.scrollHeight;
+  }
+
+  addToolActivity(stepIndex: number, toolName: string, brief: string): void {
+    if (!this.activePlan) return;
+    const step = this.activePlan.querySelector(`[data-step-index="${stepIndex}"]`) as HTMLElement | null;
+    if (!step) return;
+
+    const activity = document.createElement('div');
+    activity.className = 'chat-tool-activity';
+    activity.textContent = `> ${toolName}: ${brief}`;
+    step.appendChild(activity);
+    this.messageList.scrollTop = this.messageList.scrollHeight;
+  }
+
   private handleSend(): void {
     const text = this.input.value.trim();
     if (!text) return;
@@ -92,5 +146,12 @@ export class ChatView {
     if (this.onSend) {
       this.onSend(text);
     }
+  }
+
+  private formatTimestamp(date: Date): string {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 }

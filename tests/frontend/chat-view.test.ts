@@ -47,4 +47,41 @@ describe('ChatView', () => {
     expect(input.disabled).toBe(false);
     expect(sendBtn.disabled).toBe(false);
   });
+
+  it('renders a plan message with numbered steps', () => {
+    const chat = new ChatView(container);
+    chat.addPlanMessage(['Search Google', 'Open results', 'Summarize']);
+
+    const planEl = container.querySelector('.chat-plan') as HTMLElement;
+    expect(planEl).toBeTruthy();
+
+    const steps = planEl.querySelectorAll('.chat-plan-step');
+    expect(steps.length).toBe(3);
+    expect(steps[0].textContent).toContain('Search Google');
+    expect(steps[1].textContent).toContain('Open results');
+    expect(steps[2].textContent).toContain('Summarize');
+  });
+
+  it('updates step status to active and done', () => {
+    const chat = new ChatView(container);
+    chat.addPlanMessage(['Step A', 'Step B']);
+
+    chat.updateStepStatus(0, 'active');
+    const step0 = container.querySelectorAll('.chat-plan-step')[0] as HTMLElement;
+    expect(step0.classList.contains('active')).toBe(true);
+
+    chat.updateStepStatus(0, 'done');
+    expect(step0.classList.contains('done')).toBe(true);
+    expect(step0.classList.contains('active')).toBe(false);
+  });
+
+  it('adds tool activity under a step', () => {
+    const chat = new ChatView(container);
+    chat.addPlanMessage(['Step A']);
+
+    chat.addToolActivity(0, 'tab.navigate', 'google.com');
+    const activity = container.querySelector('.chat-tool-activity') as HTMLElement;
+    expect(activity).toBeTruthy();
+    expect(activity.textContent).toContain('tab.navigate');
+  });
 });
