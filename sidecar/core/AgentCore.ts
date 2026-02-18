@@ -6,6 +6,26 @@ import { ToolRegistry, type ParsedToolCall } from './ToolRegistry.js';
 import { AgentDispatcher } from './AgentDispatcher.js';
 
 const MAX_HISTORY = 40;
+const MAX_TOOL_RESULT_CHARS = 4_000;
+const MAX_RECOVERY_RETRIES = 2;
+
+function isRetryable(err: Error): boolean {
+  const msg = err.message.toLowerCase();
+  if (msg.includes('process exited') || msg.includes('not started') || msg.includes('not configured')) {
+    return false;
+  }
+  return msg.includes('timeout') || msg.includes('rate') || msg.includes('429')
+    || msg.includes('503') || msg.includes('500') || msg.includes('failed')
+    || msg.includes('econnreset') || msg.includes('econnrefused');
+}
+
+/** Compress text for LLM context: collapse whitespace, strip HTML tags, truncate. */
+function compressForLLM(text: string, maxLength: number): string {
+  let compressed = text.replace(/<[^>]+>/g, ' ');
+  compressed = compressed.replace(/\s+/g, ' ').trim();
+  if (compressed.length <= maxLength) return compressed;
+  return compressed.substring(0, maxLength) + `... [truncated, ${text.length} chars total]`;
+}
 
 export interface AgentContext {
   activeTabUrl?: string;
@@ -188,6 +208,43 @@ export class AgentCore {
     return defaultDecision;
   }
 
+  private async invokeWithRecovery(
+    model: NonNullable<ReturnType<ModelManager['createModel']>>,
+    messages: BaseMessage[],
+    operation: string,
+  ): Promise<{ content: string }> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RECOVERY_RETRIES; attempt++) {
+      try {
+        const response = await model.invoke(messages);
+        const content = typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+        return { content };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        lastError = error;
+
+        if (!isRetryable(error) || attempt >= MAX_RECOVERY_RETRIES) {
+          throw error;
+        }
+
+        console.error(`[AgentCore] Retryable error on ${operation} (attempt ${attempt + 1}/${MAX_RECOVERY_RETRIES}): ${error.message}`);
+
+        // Inject error context so the LLM can adapt
+        messages = [
+          ...messages,
+          new HumanMessage(
+            `The previous model call failed: ${error.message}. Adjust your approach — try a simpler action or different tool.`
+          ),
+        ];
+      }
+    }
+
+    throw lastError || new Error('Recovery exhausted');
+  }
+
   private async invokeWithTools(
     model: NonNullable<ReturnType<ModelManager['createModel']>>,
     messages: BaseMessage[],
@@ -196,10 +253,7 @@ export class AgentCore {
     let lastContent = '';
 
     for (let i = 0; i < AgentCore.MAX_SIMPLE_TOOL_ITERATIONS; i++) {
-      const response = await model.invoke(currentMessages);
-      const content = typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content);
+      const { content } = await this.invokeWithRecovery(model, currentMessages, `invokeWithTools iteration ${i}`);
       lastContent = content;
 
       const toolCall = this.toolRegistry.parseToolCall(content);
@@ -212,7 +266,7 @@ export class AgentCore {
       currentMessages = [
         ...currentMessages,
         new AIMessage(content),
-        new HumanMessage(JSON.stringify(toolResult)),
+        new HumanMessage(compressForLLM(JSON.stringify(toolResult), MAX_TOOL_RESULT_CHARS)),
       ];
     }
 

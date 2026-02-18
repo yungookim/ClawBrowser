@@ -431,4 +431,59 @@ describe('AgentCore', () => {
     expect(dispatcher.request).toHaveBeenCalledTimes(5);
     expect(response.reply).toBeDefined();
   });
+
+  describe('error recovery', () => {
+    it('retries on retryable error and injects error context to LLM', async () => {
+      setupMockModel();
+
+      let callCount = 0;
+      mockInvoke.mockImplementation((messages: any[]) => {
+        if (isRoutingCall(messages)) {
+          return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
+        }
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error('Request timeout'));
+        }
+        // Second call should have error context injected
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg?.content?.includes('previous model call failed')) {
+          return Promise.resolve({ content: 'Recovered successfully' });
+        }
+        return Promise.resolve({ content: 'No recovery context' });
+      });
+
+      const response = await agentCore.query({ userQuery: 'Hello' });
+      expect(response.reply).toBe('Recovered successfully');
+    });
+
+    it('throws immediately on non-retryable error', async () => {
+      setupMockModel();
+
+      mockInvoke.mockImplementation((messages: any[]) => {
+        if (isRoutingCall(messages)) {
+          return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
+        }
+        return Promise.reject(new Error('Sidecar process exited'));
+      });
+
+      const response = await agentCore.query({ userQuery: 'Hello' });
+      expect(response.reply).toContain('Error: Sidecar process exited');
+    });
+
+    it('gives up after max retries and returns error', async () => {
+      setupMockModel();
+
+      mockInvoke.mockImplementation((messages: any[]) => {
+        if (isRoutingCall(messages)) {
+          return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
+        }
+        return Promise.reject(new Error('Request timeout'));
+      });
+
+      const response = await agentCore.query({ userQuery: 'Hello' });
+      expect(response.reply).toContain('Error:');
+      expect(response.reply).toContain('timeout');
+    });
+  });
 });
