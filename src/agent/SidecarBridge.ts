@@ -1,5 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { Command, Child } from '@tauri-apps/plugin-shell';
+
+interface JsonRpcRequest {
+  jsonrpc: string;
+  method: string;
+  params: unknown;
+  id: number;
+}
 
 interface JsonRpcResponse {
   jsonrpc: string;
@@ -16,32 +24,81 @@ interface SidecarNotification {
 type NotificationHandler = (method: string, params: Record<string, unknown>) => void;
 
 export class SidecarBridge {
-  private nextId = 1;
+  private child: Child | null = null;
   private pendingRequests: Map<number, {
     resolve: (value: unknown) => void;
     reject: (reason: Error) => void;
   }> = new Map();
   private notificationHandlers: NotificationHandler[] = [];
-  private unlistenFn: UnlistenFn | null = null;
+  private unlistenRequest: UnlistenFn | null = null;
+  private unlistenMessage: UnlistenFn | null = null;
   private ready = false;
 
   async start(): Promise<void> {
-    // Listen for sidecar messages relayed via Tauri events
-    this.unlistenFn = await listen<string>('sidecar-message', (event) => {
+    // Listen for sidecar-request events from Rust -- write them to sidecar stdin
+    this.unlistenRequest = await listen<JsonRpcRequest>('sidecar-request', (event) => {
+      this.writeToSidecar(event.payload);
+    });
+
+    // Listen for sidecar-message events from Rust -- handle responses/notifications
+    this.unlistenMessage = await listen<JsonRpcResponse | SidecarNotification>('sidecar-message', (event) => {
       this.handleMessage(event.payload);
     });
+
+    // Spawn the sidecar process via Tauri shell plugin
+    const command = Command.sidecar('sidecar/clawbrowser-agent');
+
+    command.stdout.on('data', (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      // Relay stdout lines to Rust via sidecar_receive
+      invoke('sidecar_receive', { message: trimmed }).catch((err) => {
+        console.error('sidecar_receive failed:', err);
+      });
+    });
+
+    command.stderr.on('data', (line: string) => {
+      console.warn('[sidecar stderr]', line);
+    });
+
+    command.on('error', (error: string) => {
+      console.error('[sidecar error]', error);
+      this.ready = false;
+    });
+
+    command.on('close', (data: { code: number | null; signal: number | null }) => {
+      console.warn('[sidecar closed]', data);
+      this.ready = false;
+      // Reject all pending requests
+      for (const [, pending] of this.pendingRequests) {
+        pending.reject(new Error('Sidecar process exited'));
+      }
+      this.pendingRequests.clear();
+    });
+
+    this.child = await command.spawn();
+
+    // Notify Rust that sidecar is starting
+    await invoke('start_sidecar');
 
     this.ready = true;
   }
 
   async stop(): Promise<void> {
-    if (this.unlistenFn) {
-      this.unlistenFn();
-      this.unlistenFn = null;
+    if (this.unlistenRequest) {
+      this.unlistenRequest();
+      this.unlistenRequest = null;
+    }
+    if (this.unlistenMessage) {
+      this.unlistenMessage();
+      this.unlistenMessage = null;
+    }
+    if (this.child) {
+      await this.child.kill();
+      this.child = null;
     }
     this.ready = false;
 
-    // Reject all pending requests
     for (const [, pending] of this.pendingRequests) {
       pending.reject(new Error('Sidecar stopped'));
     }
@@ -53,7 +110,8 @@ export class SidecarBridge {
       throw new Error('Sidecar not started');
     }
 
-    const id = this.nextId++;
+    // Rust assigns the request ID and emits sidecar-request for us to write to stdin
+    const id: number = await invoke('sidecar_send', { method, params });
 
     const promise = new Promise<unknown>((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject });
@@ -66,9 +124,6 @@ export class SidecarBridge {
         }
       }, 30_000);
     });
-
-    // Send via Rust relay
-    await invoke('sidecar_send', { method, params });
 
     return promise;
   }
@@ -103,7 +158,15 @@ export class SidecarBridge {
     return this.send('ping', {}) as Promise<{ pong: boolean; uptime: number }>;
   }
 
-  private handleMessage(payload: string | SidecarNotification | JsonRpcResponse): void {
+  private writeToSidecar(request: JsonRpcRequest): void {
+    if (!this.child) return;
+    const line = JSON.stringify(request) + '\n';
+    this.child.write(line).catch((err) => {
+      console.error('Failed to write to sidecar stdin:', err);
+    });
+  }
+
+  private handleMessage(payload: JsonRpcResponse | SidecarNotification | string): void {
     let msg: JsonRpcResponse | SidecarNotification;
 
     if (typeof payload === 'string') {
