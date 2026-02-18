@@ -30,6 +30,7 @@ Prevent silent creation of an empty vault when the encrypted vault file is missi
 ### Model Configuration Guard
 - When configuring models after unlock, only call `configureModel` for hosted providers if a key is present.
 - Local providers (ollama/llamacpp) remain configurable without keys.
+- Sidecar boot should skip configuring hosted providers from persisted config until a key is injected.
 
 ## Error Handling
 - If vault data is missing: show a clear message and guide the user to restart setup wizard.
