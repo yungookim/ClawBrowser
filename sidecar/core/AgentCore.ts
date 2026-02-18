@@ -84,7 +84,7 @@ export class AgentCore {
   /** Process a user query and return the agent's response. */
   async query(context: AgentContext): Promise<AgentResponse> {
     const systemPrompt = this.buildSystemPrompt(context);
-    const route = await this.classifyAndRoute(systemPrompt, context);
+    const route = await this.classifyAndRoute(context);
     const model = this.pickModel(route.role);
     if (!model) {
       return { reply: 'No AI model configured. Please set up a model in Settings.' };
@@ -126,7 +126,7 @@ export class AgentCore {
     return this.modelManager.createModel('primary');
   }
 
-  async classifyAndRoute(systemPrompt: string, context: AgentContext): Promise<RouteDecision> {
+  async classifyAndRoute(context: AgentContext): Promise<RouteDecision> {
     const defaultDecision: RouteDecision = { role: 'primary', complexity: 'simple', reason: 'fallback' };
 
     const router = this.modelManager.createModel('primary');
@@ -166,7 +166,7 @@ export class AgentCore {
     try {
       const response = await router.invoke([
         new SystemMessage(routingPrompt),
-        new HumanMessage(contextBits || systemPrompt),
+        new HumanMessage(contextBits),
       ]);
       const content = typeof response.content === 'string'
         ? response.content

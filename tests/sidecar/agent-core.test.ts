@@ -259,7 +259,6 @@ describe('AgentCore', () => {
 
   it('classifies simple queries as simple complexity', async () => {
     setupMockModel();
-    replyContent = { content: 'Sure, the time is 3pm.' };
 
     // Override mock to return simple classification
     mockInvoke.mockImplementation((messages: any[]) => {
@@ -271,17 +270,14 @@ describe('AgentCore', () => {
       return Promise.resolve(replyContent);
     });
 
-    const response = await agentCore.query({ userQuery: 'What time is it?' });
-    expect(response.reply).toBe('Sure, the time is 3pm.');
-
-    // Verify the routing call was made and returned simple
-    const routingCall = mockInvoke.mock.calls.find((args) => isRoutingCall(args[0]));
-    expect(routingCall).toBeDefined();
+    const result = await agentCore.classifyAndRoute({ userQuery: 'What time is it?' });
+    expect(result.complexity).toBe('simple');
+    expect(result.role).toBe('secondary');
+    expect(result.reason).toBe('direct factual question');
   });
 
   it('classifies multi-step queries as complex', async () => {
     setupMockModel();
-    replyContent = { content: 'I will research that for you.' };
 
     // Override mock to return complex classification
     mockInvoke.mockImplementation((messages: any[]) => {
@@ -293,18 +289,16 @@ describe('AgentCore', () => {
       return Promise.resolve(replyContent);
     });
 
-    const response = await agentCore.query({
+    const result = await agentCore.classifyAndRoute({
       userQuery: 'Compare prices of MacBook Pro across Amazon, Best Buy, and B&H Photo',
     });
-    expect(response.reply).toBe('I will research that for you.');
-
-    const routingCall = mockInvoke.mock.calls.find((args) => isRoutingCall(args[0]));
-    expect(routingCall).toBeDefined();
+    expect(result.complexity).toBe('complex');
+    expect(result.role).toBe('primary');
+    expect(result.reason).toBe('requires browsing multiple sites and comparing');
   });
 
   it('defaults to simple when router fails', async () => {
     setupMockModel();
-    replyContent = { content: 'Fallback response' };
 
     // Override mock to reject on routing call
     mockInvoke.mockImplementation((messages: any[]) => {
@@ -314,8 +308,24 @@ describe('AgentCore', () => {
       return Promise.resolve(replyContent);
     });
 
-    const response = await agentCore.query({ userQuery: 'Hello' });
-    // Should still work — falls back to primary/simple
-    expect(response.reply).toBe('Fallback response');
+    const result = await agentCore.classifyAndRoute({ userQuery: 'Hello' });
+    expect(result).toEqual({ role: 'primary', complexity: 'simple', reason: 'fallback' });
+  });
+
+  it('falls back to simple on malformed LLM JSON', async () => {
+    setupMockModel();
+
+    // Override mock to return invalid JSON from routing
+    mockInvoke.mockImplementation((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({
+          content: 'I am not valid JSON at all {{{',
+        });
+      }
+      return Promise.resolve(replyContent);
+    });
+
+    const result = await agentCore.classifyAndRoute({ userQuery: 'test' });
+    expect(result).toEqual({ role: 'primary', complexity: 'simple', reason: 'fallback' });
   });
 });
