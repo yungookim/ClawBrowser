@@ -9,9 +9,14 @@
     "dev": "tsc --watch",
     "bundle": "npx ncc build main.ts -o dist"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@langchain/anthropic": "^1.3.18",
+    "@langchain/core": "^1.1.25",
+    "@langchain/groq": "^1.1.1",
+    "@langchain/openai": "^1.2.8"
+  },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
   }
 }
