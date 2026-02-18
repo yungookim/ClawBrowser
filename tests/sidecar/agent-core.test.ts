@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentCore, type AgentContext } from '../../sidecar/core/AgentCore';
+import { AgentCore, type AgentContext, type RouteDecision } from '../../sidecar/core/AgentCore';
 import { ModelManager } from '../../sidecar/core/ModelManager';
 
 function isRoutingCall(messages: any[]): boolean {
   const first = messages?.[0];
-  return Boolean(first && typeof first.content === 'string' && first.content.includes('router that selects which model'));
+  return Boolean(first && typeof first.content === 'string'
+    && (first.content.includes('router that selects which model')
+      || first.content.includes('router that classifies')));
 }
 
 function isAgentSystemCall(messages: any[]): boolean {
@@ -41,7 +43,7 @@ describe('AgentCore', () => {
 
     mockInvoke = vi.fn((messages: any[]) => {
       if (isRoutingCall(messages)) {
-        return Promise.resolve({ content: '{"role":"primary","reason":"default"}' });
+        return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
       }
       if (rejectError) {
         return Promise.reject(rejectError);
@@ -235,7 +237,7 @@ describe('AgentCore', () => {
     let nonRouterCount = 0;
     mockInvoke = vi.fn((messages: any[]) => {
       if (isRoutingCall(messages)) {
-        return Promise.resolve({ content: '{"role":"primary","reason":"default"}' });
+        return Promise.resolve({ content: '{"role":"primary","complexity":"simple","reason":"default"}' });
       }
       if (nonRouterCount === 0) {
         nonRouterCount += 1;
@@ -253,5 +255,67 @@ describe('AgentCore', () => {
     const response = await agentCore.query({ userQuery: 'Run codex help' });
     expect(executor.execute).toHaveBeenCalledWith('codex', ['--help'], undefined);
     expect(response.reply).toBe('Done.');
+  });
+
+  it('classifies simple queries as simple complexity', async () => {
+    setupMockModel();
+    replyContent = { content: 'Sure, the time is 3pm.' };
+
+    // Override mock to return simple classification
+    mockInvoke.mockImplementation((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({
+          content: '{"role":"secondary","complexity":"simple","reason":"direct factual question"}',
+        });
+      }
+      return Promise.resolve(replyContent);
+    });
+
+    const response = await agentCore.query({ userQuery: 'What time is it?' });
+    expect(response.reply).toBe('Sure, the time is 3pm.');
+
+    // Verify the routing call was made and returned simple
+    const routingCall = mockInvoke.mock.calls.find((args) => isRoutingCall(args[0]));
+    expect(routingCall).toBeDefined();
+  });
+
+  it('classifies multi-step queries as complex', async () => {
+    setupMockModel();
+    replyContent = { content: 'I will research that for you.' };
+
+    // Override mock to return complex classification
+    mockInvoke.mockImplementation((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.resolve({
+          content: '{"role":"primary","complexity":"complex","reason":"requires browsing multiple sites and comparing"}',
+        });
+      }
+      return Promise.resolve(replyContent);
+    });
+
+    const response = await agentCore.query({
+      userQuery: 'Compare prices of MacBook Pro across Amazon, Best Buy, and B&H Photo',
+    });
+    expect(response.reply).toBe('I will research that for you.');
+
+    const routingCall = mockInvoke.mock.calls.find((args) => isRoutingCall(args[0]));
+    expect(routingCall).toBeDefined();
+  });
+
+  it('defaults to simple when router fails', async () => {
+    setupMockModel();
+    replyContent = { content: 'Fallback response' };
+
+    // Override mock to reject on routing call
+    mockInvoke.mockImplementation((messages: any[]) => {
+      if (isRoutingCall(messages)) {
+        return Promise.reject(new Error('Router LLM unavailable'));
+      }
+      return Promise.resolve(replyContent);
+    });
+
+    const response = await agentCore.query({ userQuery: 'Hello' });
+    // Should still work — falls back to primary/simple
+    expect(response.reply).toBe('Fallback response');
   });
 });

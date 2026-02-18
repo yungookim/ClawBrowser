@@ -19,6 +19,12 @@ export interface AgentResponse {
   reply: string;
 }
 
+export interface RouteDecision {
+  role: ModelRole;
+  complexity: 'simple' | 'complex';
+  reason: string;
+}
+
 /**
  * AgentCore orchestrates LLM interactions with workspace context
  * and conversation history management.
@@ -78,8 +84,8 @@ export class AgentCore {
   /** Process a user query and return the agent's response. */
   async query(context: AgentContext): Promise<AgentResponse> {
     const systemPrompt = this.buildSystemPrompt(context);
-    const role = await this.selectRole(systemPrompt, context);
-    const model = this.pickModel(role);
+    const route = await this.classifyAndRoute(systemPrompt, context);
+    const model = this.pickModel(route.role);
     if (!model) {
       return { reply: 'No AI model configured. Please set up a model in Settings.' };
     }
@@ -120,17 +126,34 @@ export class AgentCore {
     return this.modelManager.createModel('primary');
   }
 
-  private async selectRole(systemPrompt: string, context: AgentContext): Promise<ModelRole> {
+  async classifyAndRoute(systemPrompt: string, context: AgentContext): Promise<RouteDecision> {
+    const defaultDecision: RouteDecision = { role: 'primary', complexity: 'simple', reason: 'fallback' };
+
     const router = this.modelManager.createModel('primary');
-    if (!router) return 'primary';
+    if (!router) return defaultDecision;
 
     const routingPrompt = [
-      'You are a router that selects which model should handle the request.',
-      'Choose one of: primary, secondary, subagent.',
-      '- primary: main chat, planning, general reasoning.',
-      '- secondary: fast, cheap, simple queries.',
-      '- subagent: hard or expensive tasks needing depth.',
-      'Respond ONLY with JSON: {"role":"primary|secondary|subagent","reason":"..."}',
+      'You are a router that classifies user requests and selects the best model.',
+      '',
+      'Determine TWO things:',
+      '1. Which model role should handle the request: primary, secondary, or subagent.',
+      '   - primary: main chat, planning, general reasoning.',
+      '   - secondary: fast, cheap, simple queries (greetings, single facts, quick lookups).',
+      '   - subagent: hard or expensive tasks needing depth.',
+      '',
+      '2. The complexity of the request: simple or complex.',
+      '   - simple: single action or direct answer. Examples:',
+      '     "What time is it?" — direct factual question',
+      '     "Open a new tab" — single browser action',
+      '     "Close this tab" — single browser action',
+      '     "What is the title of this page?" — direct lookup',
+      '   - complex: needs multiple sequential browser actions, research, or multi-page browsing. Examples:',
+      '     "Compare prices of X across Amazon, Best Buy, and B&H" — multi-site research',
+      '     "Find and summarize the top 5 articles about AI" — multi-page browsing + synthesis',
+      '     "Fill out this form with my info, then submit and screenshot the confirmation" — multi-step workflow',
+      '     "Research competitors and create a comparison table" — research + generation',
+      '',
+      'Respond ONLY with JSON: {"role":"primary|secondary|subagent","complexity":"simple|complex","reason":"..."}',
     ].join('\n');
 
     const contextBits = [
@@ -150,13 +173,17 @@ export class AgentCore {
         : JSON.stringify(response.content);
       const parsed = this.safeJsonParse(content);
       const role = parsed?.role as ModelRole | undefined;
-      if (role === 'primary' || role === 'secondary' || role === 'subagent') {
-        return role;
+      const complexity = parsed?.complexity as 'simple' | 'complex' | undefined;
+      const reason = parsed?.reason as string | undefined;
+
+      if ((role === 'primary' || role === 'secondary' || role === 'subagent')
+        && (complexity === 'simple' || complexity === 'complex')) {
+        return { role, complexity, reason: reason || '' };
       }
     } catch (err) {
       console.error('[AgentCore] Routing error:', err);
     }
-    return 'primary';
+    return defaultDecision;
   }
 
   private async invokeWithTools(
