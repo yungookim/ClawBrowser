@@ -128,6 +128,11 @@ ${pendingList}
     }
   }
 
+  /** Get current heartbeat state. */
+  getState(): HeartbeatState {
+    return { ...this.state };
+  }
+
   private formatUptime(seconds: number): string {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
