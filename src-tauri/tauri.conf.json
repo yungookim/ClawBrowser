@@ -26,5 +26,21 @@
   "bundle": {
     "active": true,
     "targets": "all"
+  },
+  "plugins": {
+    "shell": {
+      "sidecar": true,
+      "scope": [
+        {
+          "name": "sidecar/clawbrowser-agent",
+          "sidecar": true
+        }
+      ]
+    },
+    "updater": {
+      "active": false,
+      "dialog": true,
+      "endpoints": []
+    }
   }
 }
