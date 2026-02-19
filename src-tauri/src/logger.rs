@@ -161,6 +161,9 @@ fn is_date_str(value: &str) -> bool {
 }
 
 fn default_logs_dir() -> Option<PathBuf> {
+    if let Some(dir) = env_logs_base_dir() {
+        return Some(dir.join("system"));
+    }
     let home = home_dir()?;
     let config_path = home.join(".clawbrowser").join("config.json");
     if let Ok(raw) = fs::read_to_string(config_path) {
@@ -173,6 +176,22 @@ fn default_logs_dir() -> Option<PathBuf> {
         }
     }
     Some(home.join(".clawbrowser").join("workspace").join("logs").join("system"))
+}
+
+fn env_logs_base_dir() -> Option<PathBuf> {
+    let raw = std::env::var("CLAW_LOG_DIR").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        return Some(path);
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => Some(cwd.join(path)),
+        Err(_) => Some(path),
+    }
 }
 
 fn home_dir() -> Option<PathBuf> {

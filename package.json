@@ -10,7 +10,7 @@
     "dev:sidecar": "cd sidecar && npx tsc --watch",
     "dev:tauri": "VITE_SIDECAR_NAME=sidecar/clawbrowser-agent-dev tauri dev",
     "tauri": "tauri",
-    "dev": "npm run build:sidecar && concurrently -k -n sidecar,tauri -c blue,green \"npm run dev:sidecar\" \"npm run dev:tauri\"",
+    "dev": "CLAW_LOG_DIR=./log npm run build:sidecar && CLAW_LOG_DIR=./log concurrently -k -n sidecar,tauri -c blue,green \"npm run dev:sidecar\" \"npm run dev:tauri\"",
     "build": "npm run build:sidecar && tauri build",
     "test": "vitest run --coverage --config vitest.config.ts"
   },

@@ -3,16 +3,184 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Blank</title>
+    <title>ClawBrowser</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000000;
+        --text: #ffffff;
+        --text-muted: #9a9a9a;
+      }
+
       html, body {
         margin: 0;
         padding: 0;
         width: 100%;
         height: 100%;
-        background: #ffffff;
+        background: var(--bg);
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      #matrix {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        z-index: 0;
+      }
+
+      .hero {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 24px;
+      }
+
+      .hero-inner {
+        display: grid;
+        gap: 10px;
+      }
+
+      .title {
+        font-size: 32px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
     </style>
   </head>
-  <body></body>
+  <body>
+    <canvas id="matrix" aria-hidden="true"></canvas>
+    <main class="hero" aria-label="ClawBrowser">
+      <div class="hero-inner">
+        <div class="title">ClawBrowser</div>
+        <div class="subtitle">The smartest child of openclaw.</div>
+      </div>
+    </main>
+    <script>
+      (() => {
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+-/<>[]{}';
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        let width = 0;
+        let height = 0;
+        let columns = 0;
+        let drops = [];
+        let fontSize = 14;
+        let charWidth = 12;
+        let lastFrameTime = 0;
+        let rafId = 0;
+        const frameIntervalMs = 55;
+
+        const setSize = () => {
+          const dpr = window.devicePixelRatio || 1;
+          width = Math.max(1, window.innerWidth);
+          height = Math.max(1, window.innerHeight);
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.font = `${fontSize}px SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace`;
+          ctx.textBaseline = 'top';
+          charWidth = Math.max(8, Math.ceil(ctx.measureText('M').width));
+          columns = Math.max(1, Math.floor(width / charWidth));
+          const maxRows = Math.max(1, Math.floor(height / fontSize));
+          drops = Array.from({ length: columns }, () => Math.floor(Math.random() * maxRows));
+
+          if (prefersReducedMotion.matches) {
+            drawStatic();
+          }
+        };
+
+        const drawFrame = () => {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+          ctx.fillRect(0, 0, width, height);
+
+          for (let i = 0; i < columns; i += 1) {
+            const char = chars[Math.floor(Math.random() * chars.length)];
+            const x = i * charWidth;
+            const y = drops[i] * fontSize;
+            const isBright = Math.random() > 0.92;
+            ctx.fillStyle = isBright ? 'rgba(255,255,255,0.9)' : 'rgba(154,154,154,0.45)';
+            ctx.fillText(char, x, y);
+
+            if (y > height && Math.random() > 0.975) {
+              drops[i] = 0;
+            } else {
+              drops[i] += 1;
+            }
+          }
+        };
+
+        const drawStatic = () => {
+          ctx.fillStyle = 'rgba(0,0,0,1)';
+          ctx.fillRect(0, 0, width, height);
+          const rows = Math.max(1, Math.floor(height / fontSize));
+          const density = 0.14;
+
+          for (let i = 0; i < columns; i += 1) {
+            const count = Math.max(1, Math.floor(rows * density));
+            for (let j = 0; j < count; j += 1) {
+              const row = Math.floor(Math.random() * rows);
+              const char = chars[Math.floor(Math.random() * chars.length)];
+              const isBright = Math.random() > 0.8;
+              ctx.fillStyle = isBright ? 'rgba(255,255,255,0.7)' : 'rgba(154,154,154,0.3)';
+              ctx.fillText(char, i * charWidth, row * fontSize);
+            }
+          }
+        };
+
+        const animate = (time) => {
+          if (prefersReducedMotion.matches) return;
+          if (time - lastFrameTime >= frameIntervalMs) {
+            drawFrame();
+            lastFrameTime = time;
+          }
+          rafId = window.requestAnimationFrame(animate);
+        };
+
+        const init = () => {
+          setSize();
+          if (!prefersReducedMotion.matches) {
+            rafId = window.requestAnimationFrame(animate);
+          }
+        };
+
+        window.addEventListener('resize', () => {
+          setSize();
+        });
+
+        prefersReducedMotion.addEventListener?.('change', () => {
+          if (rafId) {
+            window.cancelAnimationFrame(rafId);
+            rafId = 0;
+          }
+          setSize();
+          if (!prefersReducedMotion.matches) {
+            rafId = window.requestAnimationFrame(animate);
+          }
+        });
+
+        init();
+      })();
+    </script>
+  </body>
 </html>

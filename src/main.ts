@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { TabManager } from './tabs/TabManager';
+import { TabManager, type Tab } from './tabs/TabManager';
 import { TabBar } from './tabs/TabBar';
 import { NavBar } from './navigation/NavBar';
 import { SidecarBridge } from './agent/SidecarBridge';
@@ -346,7 +346,22 @@ async function bootstrap(): Promise<void> {
   const agentCapabilityRouter = new AgentCapabilityRouter(sidecar, tabManager, { domAutomation });
   agentCapabilityRouter.start();
 
+  let ensuringBlankTab = false;
+  const ensureBlankTab = (tabs: Tab[]) => {
+    if (ensuringBlankTab) return;
+    if (tabs.length > 0) return;
+    if (onboardingActive || vaultLocked) return;
+    if (settingsPanel?.isVisible()) return;
+    ensuringBlankTab = true;
+    tabManager.createTab('about:blank').catch((err) => {
+      console.error('Failed to recreate blank tab:', err);
+    }).finally(() => {
+      ensuringBlankTab = false;
+    });
+  };
+
   tabManager.onChange((tabs, activeId) => {
+    ensureBlankTab(tabs);
     const active = tabs.find((tab) => tab.id === activeId);
     sidecar.tabUpdate(tabs.length, active?.title || '').catch(() => {
       // Sidecar might be offline; ignore.

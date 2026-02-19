@@ -9,7 +9,7 @@ describe('SettingsPanel', () => {
   let container: HTMLElement;
   let bridge: any;
   let tabManager: any;
-  let vault: any;
+  let vaultStore: any;
 
   beforeEach(() => {
     document.body.innerHTML = '<div id="root"></div>';
@@ -47,10 +47,15 @@ describe('SettingsPanel', () => {
       switchTab: vi.fn(),
     };
 
-    vault = {
+    vaultStore = {
       isUnlocked: true,
       set: vi.fn().mockResolvedValue(undefined),
       exportEncrypted: vi.fn().mockResolvedValue('encrypted'),
+      exportPlaintext: vi.fn().mockResolvedValue('plaintext'),
+      importPlaintext: vi.fn().mockResolvedValue(undefined),
+      unlockEncrypted: vi.fn().mockResolvedValue(undefined),
+      setEncryptionEnabled: vi.fn(),
+      getPlaintextEntries: vi.fn().mockReturnValue({}),
     };
   });
 
@@ -102,7 +107,7 @@ describe('SettingsPanel', () => {
   });
 
   it('saves models and persists API keys when vault unlocked', async () => {
-    const panel = new SettingsPanel(container, bridge, tabManager, vault);
+    const panel = new SettingsPanel(container, bridge, tabManager, vaultStore);
     panel.toggle();
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -136,7 +141,27 @@ describe('SettingsPanel', () => {
       },
     });
 
-    expect(vault.set).toHaveBeenCalledWith('apikey:secondary', 'sk-test');
+    expect(vaultStore.set).toHaveBeenCalledWith('apikey:secondary', 'sk-test');
     expect(bridge.saveVault).toHaveBeenCalledWith('encrypted');
+  });
+
+  it('disables vault encryption via toggle change', async () => {
+    const panel = new SettingsPanel(container, bridge, tabManager, vaultStore);
+    panel.toggle();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const toggle = container.querySelector('[data-role="vault-encryption-toggle"]') as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(vaultStore.exportPlaintext).toHaveBeenCalled();
+    expect(vaultStore.importPlaintext).toHaveBeenCalledWith('plaintext');
+    expect(bridge.saveVault).toHaveBeenCalledWith('plaintext');
+    expect(bridge.updateConfig).toHaveBeenCalledWith({ vaultEncryptionEnabled: false });
+
+    confirmSpy.mockRestore();
   });
 });

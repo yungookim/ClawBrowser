@@ -6,7 +6,7 @@ import modelCatalog from '../shared/modelCatalog.json';
 import { TabManager } from '../tabs/TabManager';
 import { Combobox } from '../ui/Combobox';
 import { Dropdown } from '../ui/Dropdown';
-import { Vault } from '../vault/Vault';
+import { VaultStore } from '../vault/VaultStore';
 import { DEFAULT_AGENT_CONTROL, type AgentControlSettings } from '../agent/types';
 
 type ModelConfig = {
@@ -48,11 +48,14 @@ export class SettingsPanel {
   private container: HTMLElement;
   private bridge: SidecarBridge;
   private tabManager: TabManager;
-  private vault: Vault | null;
+  private vaultStore: VaultStore | null;
   private root: HTMLElement;
   private visible = false;
   private lastActiveTabId: string | null = null;
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
+  private onVaultEncryptionChange: ((enabled: boolean) => void) | null = null;
+  private vaultEncryptionEnabled = true;
+  private vaultToggleBusy = false;
 
   private bannerEl!: HTMLElement;
   private modelListEl!: HTMLElement;
@@ -99,20 +102,24 @@ export class SettingsPanel {
   private agentLogDetailSelect!: HTMLSelectElement;
   private agentLogRetentionInput!: HTMLInputElement;
   private agentStatusIndicatorInput!: HTMLInputElement;
+  private vaultEncryptionToggleInput!: HTMLInputElement;
+  private vaultEncryptionStatusEl!: HTMLElement;
   private onStartSetupWizard: (() => void) | null = null;
 
   constructor(
     container: HTMLElement,
     bridge: SidecarBridge,
     tabManager: TabManager,
-    vault?: Vault,
+    vaultStore?: VaultStore,
     onStartSetupWizard?: () => void,
+    onVaultEncryptionChange?: (enabled: boolean) => void,
   ) {
     this.container = container;
     this.bridge = bridge;
     this.tabManager = tabManager;
-    this.vault = vault || null;
+    this.vaultStore = vaultStore || null;
     this.onStartSetupWizard = onStartSetupWizard || null;
+    this.onVaultEncryptionChange = onVaultEncryptionChange || null;
     this.root = this.build();
     this.container.appendChild(this.root);
 
@@ -520,6 +527,23 @@ export class SettingsPanel {
             </div>
           </section>
 
+          <section class="settings-card" data-card="vault-security">
+            <div class="settings-card-header">
+              <h2>Vault Security</h2>
+              <p>Control whether API keys are encrypted on disk.</p>
+            </div>
+            <div class="settings-toggle-row" data-role="vault-encryption-row">
+              <div class="settings-toggle-copy">
+                <strong>Encrypt vault data</strong>
+                <span data-role="vault-encryption-status">Encryption enabled.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" data-role="vault-encryption-toggle" aria-label="Encrypt vault data" />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+          </section>
+
           <section class="settings-card" data-card="status">
             <div class="settings-card-header">
               <h2>System Status</h2>
@@ -615,49 +639,25 @@ export class SettingsPanel {
     this.agentActionLogEnabledInput = this.agentControlForm.querySelector('[data-role="agent-log-enabled"]') as HTMLInputElement;
     this.agentLogDetailSelect = this.agentControlForm.querySelector('[data-role="agent-log-detail"]') as HTMLSelectElement;
     this.agentLogRetentionInput = this.agentControlForm.querySelector('[data-role="agent-log-retention"]') as HTMLInputElement;
+    this.vaultEncryptionToggleInput = root.querySelector('[data-role="vault-encryption-toggle"]') as HTMLInputElement;
+    this.vaultEncryptionStatusEl = root.querySelector('[data-role="vault-encryption-status"]') as HTMLElement;
 
-    const refreshBtn = root.querySelector('[data-action="refresh"]') as HTMLButtonElement | null;
-    refreshBtn?.addEventListener('click', () => {
-      this.refreshAll().catch((err) => {
-        this.setBanner(`Refresh failed: ${String(err)}`, 'warn');
-      });
+    root.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      const actionEl = target?.closest('[data-action]') as HTMLElement | null;
+      if (!actionEl || !root.contains(actionEl)) return;
+      const action = actionEl.getAttribute('data-action');
+      if (!action) return;
+      event.preventDefault();
+      this.handleAction(action);
     });
 
-    const reflectionButtons = root.querySelectorAll('[data-action="reflection"]');
-    reflectionButtons.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.runReflection();
-      });
-    });
-
-    const memorySearchBtn = root.querySelector('[data-action="memory-search"]') as HTMLButtonElement | null;
-    memorySearchBtn?.addEventListener('click', () => {
-      this.searchMemory();
-    });
-
-    const openLogsBtn = root.querySelector('[data-action="open-logs"]') as HTMLButtonElement | null;
-    openLogsBtn?.addEventListener('click', () => {
-      this.openLogsFolder();
-    });
-
-    const setupWizardBtn = root.querySelector('[data-action="setup-wizard"]') as HTMLButtonElement | null;
-    setupWizardBtn?.addEventListener('click', () => {
-      const confirmed = window.confirm(
-        'Restart the setup wizard and create a new vault? This will overwrite your existing vault data.',
-      );
-      if (!confirmed) return;
-
-      if (!this.onStartSetupWizard) {
-        this.setBanner('Setup wizard is unavailable.', 'warn');
+    this.vaultEncryptionToggleInput.addEventListener('change', () => {
+      if (this.vaultToggleBusy) {
+        this.vaultEncryptionToggleInput.checked = this.vaultEncryptionEnabled;
         return;
       }
-
-      this.setBanner('Launching setup wizard...', 'good');
-      this.onStartSetupWizard();
-      this.bridge.updateConfig({ onboardingComplete: false })
-        .catch((err) => {
-          this.setBanner(`Failed to mark onboarding incomplete: ${String(err)}`, 'warn');
-        });
+      void this.handleVaultEncryptionToggle(this.vaultEncryptionToggleInput.checked);
     });
 
     this.memoryQueryInput.addEventListener('keydown', (event) => {
@@ -695,8 +695,52 @@ export class SettingsPanel {
     this.applyModelDefaults();
     this.updateModelOptions();
     this.renderAgentControl(DEFAULT_AGENT_CONTROL);
+    this.renderVaultEncryption(this.vaultEncryptionEnabled);
 
     return root;
+  }
+
+  private handleAction(action: string): void {
+    switch (action) {
+      case 'refresh':
+        this.refreshAll().catch((err) => {
+          this.setBanner(`Refresh failed: ${String(err)}`, 'warn');
+        });
+        return;
+      case 'reflection':
+        void this.runReflection();
+        return;
+      case 'memory-search':
+        void this.searchMemory();
+        return;
+      case 'open-logs':
+        void this.openLogsFolder();
+        return;
+      case 'setup-wizard':
+        this.handleSetupWizardRestart();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private handleSetupWizardRestart(): void {
+    const confirmed = window.confirm(
+      'Restart the setup wizard and create a new vault? This will overwrite your existing vault data.',
+    );
+    if (!confirmed) return;
+
+    if (!this.onStartSetupWizard) {
+      this.setBanner('Setup wizard is unavailable.', 'warn');
+      return;
+    }
+
+    this.setBanner('Launching setup wizard...', 'good');
+    this.onStartSetupWizard();
+    this.bridge.updateConfig({ onboardingComplete: false })
+      .catch((err) => {
+        this.setBanner(`Failed to mark onboarding incomplete: ${String(err)}`, 'warn');
+      });
   }
 
   private async refreshAll(): Promise<void> {
@@ -739,9 +783,11 @@ export class SettingsPanel {
       const config = configRes.value as {
         commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
         agentControl?: AgentControlSettings;
+        vaultEncryptionEnabled?: boolean;
       };
       this.renderAllowlist(config.commandAllowlist || []);
       this.renderAgentControl(config.agentControl || DEFAULT_AGENT_CONTROL);
+      this.renderVaultEncryption(config.vaultEncryptionEnabled !== false);
     }
 
     if (logsRes.status === 'fulfilled') {
@@ -814,12 +860,16 @@ export class SettingsPanel {
       });
 
       if (apiKey) {
-        if (this.vault && this.vault.isUnlocked) {
-          await this.vault.set(`apikey:${role}`, apiKey);
-          const encrypted = await this.vault.exportEncrypted();
-          await this.bridge.saveVault(encrypted);
-        } else {
+        if (!this.vaultStore) {
+          this.setBanner('Model saved, but vault is unavailable. API key was not persisted.', 'warn');
+        } else if (this.vaultEncryptionEnabled && !this.vaultStore.isUnlocked) {
           this.setBanner('Model saved, but vault is locked. API key was not persisted.', 'warn');
+        } else {
+          await this.vaultStore.set(`apikey:${role}`, apiKey);
+          const payload = this.vaultEncryptionEnabled
+            ? await this.vaultStore.exportEncrypted()
+            : await this.vaultStore.exportPlaintext();
+          await this.bridge.saveVault(payload);
         }
       }
 
@@ -830,6 +880,122 @@ export class SettingsPanel {
       this.renderModels(models);
     } catch (err) {
       this.setBanner(`Failed to save model: ${String(err)}`, 'warn');
+    }
+  }
+
+  private renderVaultEncryption(enabled: boolean): void {
+    this.vaultEncryptionEnabled = enabled;
+    if (this.vaultEncryptionToggleInput) {
+      this.vaultEncryptionToggleInput.checked = enabled;
+    }
+    if (this.vaultEncryptionStatusEl) {
+      this.vaultEncryptionStatusEl.textContent = enabled
+        ? 'Encryption enabled.'
+        : 'Encryption disabled (plaintext).';
+    }
+  }
+
+  private async handleVaultEncryptionToggle(nextEnabled: boolean): Promise<void> {
+    const previous = this.vaultEncryptionEnabled;
+    if (nextEnabled === previous) return;
+    this.vaultToggleBusy = true;
+    if (this.vaultEncryptionToggleInput) {
+      this.vaultEncryptionToggleInput.disabled = true;
+    }
+
+    if (!this.vaultStore) {
+      this.setBanner('Vault unavailable. Unable to change encryption.', 'warn');
+      this.renderVaultEncryption(previous);
+      this.vaultToggleBusy = false;
+      if (this.vaultEncryptionToggleInput) {
+        this.vaultEncryptionToggleInput.disabled = false;
+      }
+      return;
+    }
+
+    if (!nextEnabled) {
+      const confirmed = window.confirm(
+        'Disable vault encryption? API keys will be stored in plaintext on disk.',
+      );
+      if (!confirmed) {
+        this.renderVaultEncryption(previous);
+        this.vaultToggleBusy = false;
+        if (this.vaultEncryptionToggleInput) {
+          this.vaultEncryptionToggleInput.disabled = false;
+        }
+        return;
+      }
+      if (!this.vaultStore.isUnlocked) {
+        this.setBanner('Unlock the vault before disabling encryption.', 'warn');
+        this.renderVaultEncryption(previous);
+        this.vaultToggleBusy = false;
+        if (this.vaultEncryptionToggleInput) {
+          this.vaultEncryptionToggleInput.disabled = false;
+        }
+        return;
+      }
+      try {
+        const plaintext = await this.vaultStore.exportPlaintext();
+        await this.vaultStore.importPlaintext(plaintext);
+        await this.bridge.saveVault(plaintext);
+        await this.bridge.updateConfig({ vaultEncryptionEnabled: false });
+        this.vaultStore.setEncryptionEnabled(false);
+        this.renderVaultEncryption(false);
+        this.onVaultEncryptionChange?.(false);
+        this.setBanner('Vault encryption disabled. Data stored in plaintext.', 'warn');
+      } catch (err) {
+        this.setBanner(`Failed to disable encryption: ${String(err)}`, 'warn');
+        this.renderVaultEncryption(previous);
+      } finally {
+        this.vaultToggleBusy = false;
+        if (this.vaultEncryptionToggleInput) {
+          this.vaultEncryptionToggleInput.disabled = false;
+        }
+      }
+      return;
+    }
+
+    const password = window.prompt('Create a new passphrase (min 8 characters).') || '';
+    if (password.length < 8) {
+      this.setBanner('Passphrase must be at least 8 characters.', 'warn');
+      this.renderVaultEncryption(previous);
+      this.vaultToggleBusy = false;
+      if (this.vaultEncryptionToggleInput) {
+        this.vaultEncryptionToggleInput.disabled = false;
+      }
+      return;
+    }
+    const confirm = window.prompt('Confirm your new passphrase.') || '';
+    if (password !== confirm) {
+      this.setBanner('Passphrases do not match.', 'warn');
+      this.renderVaultEncryption(previous);
+      this.vaultToggleBusy = false;
+      if (this.vaultEncryptionToggleInput) {
+        this.vaultEncryptionToggleInput.disabled = false;
+      }
+      return;
+    }
+
+    try {
+      const entries = this.vaultStore.getPlaintextEntries();
+      await this.vaultStore.unlockEncrypted(password);
+      for (const [key, value] of Object.entries(entries)) {
+        await this.vaultStore.set(key, value);
+      }
+      const encrypted = await this.vaultStore.exportEncrypted();
+      await this.bridge.saveVault(encrypted);
+      await this.bridge.updateConfig({ vaultEncryptionEnabled: true });
+      this.renderVaultEncryption(true);
+      this.onVaultEncryptionChange?.(true);
+      this.setBanner('Vault encryption enabled.', 'good');
+    } catch (err) {
+      this.setBanner(`Failed to enable encryption: ${String(err)}`, 'warn');
+      this.renderVaultEncryption(previous);
+    } finally {
+      this.vaultToggleBusy = false;
+      if (this.vaultEncryptionToggleInput) {
+        this.vaultEncryptionToggleInput.disabled = false;
+      }
     }
   }
 

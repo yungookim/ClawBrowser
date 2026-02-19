@@ -27,7 +27,7 @@ type NotificationHandler = (method: string, params: Record<string, unknown>) => 
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const METHOD_TIMEOUTS: Record<string, number> = {
-  agentQuery: 120_000,
+  agentQuery: 600_000,
 };
 
 export class SidecarBridge {

@@ -126,6 +126,41 @@ export class ChatView {
     this.messageList.scrollTop = this.messageList.scrollHeight;
   }
 
+  replacePlan(newSteps: string[], startIndex: number): void {
+    if (!this.activePlan) return;
+
+    // Remove steps from startIndex onward
+    const toRemove = this.activePlan.querySelectorAll(`[data-step-index]`);
+    toRemove.forEach((el) => {
+      const idx = parseInt((el as HTMLElement).dataset.stepIndex || '0', 10);
+      if (idx >= startIndex) {
+        el.remove();
+      }
+    });
+
+    // Append new steps starting from startIndex
+    newSteps.forEach((step, i) => {
+      const stepIdx = startIndex + i;
+      const stepEl = document.createElement('div');
+      stepEl.className = 'chat-plan-step pending';
+      stepEl.dataset.stepIndex = String(stepIdx);
+
+      const indicator = document.createElement('span');
+      indicator.className = 'step-indicator';
+      indicator.textContent = `${stepIdx + 1}.`;
+      stepEl.appendChild(indicator);
+
+      const label = document.createElement('span');
+      label.className = 'step-label';
+      label.textContent = step;
+      stepEl.appendChild(label);
+
+      this.activePlan!.appendChild(stepEl);
+    });
+
+    this.messageList.scrollTop = this.messageList.scrollHeight;
+  }
+
   addToolActivity(stepIndex: number, toolName: string, brief: string): void {
     if (!this.activePlan) return;
     const step = this.activePlan.querySelector(`[data-step-index="${stepIndex}"]`) as HTMLElement | null;

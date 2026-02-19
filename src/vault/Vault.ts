@@ -135,6 +135,15 @@ export class Vault {
     return serialized;
   }
 
+  async exportPlaintext(): Promise<string> {
+    this.requireUnlocked();
+    const entries: Record<string, string> = {};
+    for (const [key, value] of this.entries) {
+      entries[key] = value;
+    }
+    return JSON.stringify({ entries });
+  }
+
   async importEncrypted(password: string, data: string): Promise<void> {
     await this.unlock(password, data);
     this.lastExported = data;

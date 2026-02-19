@@ -58,6 +58,11 @@ export class DomAutomationBridge {
   }
 
   async executeRequest(request: DomAutomationRequest): Promise<DomAutomationResult> {
+    if (!request.requestId) {
+      request.requestId = this.createRequestId();
+    }
+    const requestId = request.requestId;
+
     const tabId = request.tabId || this.tabManager.getActiveTabId();
     if (!tabId) {
       throw new Error('No active tab for dom automation');
@@ -78,18 +83,18 @@ export class DomAutomationBridge {
 
     const resultPromise = new Promise<DomAutomationResult>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
-        this.pending.delete(request.requestId);
+        this.pending.delete(requestId);
         this.decrementActive();
-        reject(new Error(`Dom automation timeout (${request.requestId})`));
+        reject(new Error(`Dom automation timeout (${requestId})`));
       }, timeoutMs);
-      this.pending.set(request.requestId, { resolve, reject, timeoutId });
+      this.pending.set(requestId, { resolve, reject, timeoutId });
     });
 
     try {
       this.incrementActive();
       await this.tabManager.injectJs(tabId, script);
     } catch (err) {
-      this.clearPending(request.requestId);
+      this.clearPending(requestId);
       this.decrementActive();
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Dom automation injection failed: ${message}`);

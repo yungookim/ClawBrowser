@@ -29,6 +29,13 @@ const mocks = vi.hoisted(() => ({
   vaultSet: vi.fn(),
   vaultExport: vi.fn(),
   vaultImport: vi.fn(),
+  vaultStoreGet: vi.fn(),
+  vaultStoreSet: vi.fn(),
+  vaultStoreExportEncrypted: vi.fn(),
+  vaultStoreExportPlaintext: vi.fn(),
+  vaultStoreImportPlaintext: vi.fn(),
+  vaultStoreSetEncryptionEnabled: vi.fn(),
+  vaultStoreIsUnlocked: true,
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -114,6 +121,20 @@ vi.mock('../../src/vault/Vault', () => ({
   },
 }));
 
+vi.mock('../../src/vault/VaultStore', () => ({
+  VaultStore: class {
+    constructor(_vault: unknown, _enabled: boolean) {}
+    get isUnlocked(): boolean { return mocks.vaultStoreIsUnlocked; }
+    get = (...args: any[]) => mocks.vaultStoreGet(...args);
+    set = (...args: any[]) => mocks.vaultStoreSet(...args);
+    exportEncrypted = (...args: any[]) => mocks.vaultStoreExportEncrypted(...args);
+    exportPlaintext = (...args: any[]) => mocks.vaultStoreExportPlaintext(...args);
+    importPlaintext = (...args: any[]) => mocks.vaultStoreImportPlaintext(...args);
+    setEncryptionEnabled = (...args: any[]) => mocks.vaultStoreSetEncryptionEnabled(...args);
+    setEncryptedData = vi.fn();
+  },
+}));
+
 vi.mock('../../src/vault/VaultUI', () => ({
   VaultUI: class {
     constructor(_vault: unknown) {}
@@ -146,6 +167,7 @@ vi.mock('../../src/onboarding/Wizard', () => ({
 describe('main bootstrap', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     document.body.innerHTML = `
       <div id="tab-bar"></div>
       <div id="nav-bar"></div>
@@ -161,6 +183,8 @@ describe('main bootstrap', () => {
       workspacePath: null,
       models: {},
       commandAllowlist: [],
+      agentControl: {},
+      vaultEncryptionEnabled: true,
     });
     mocks.sidecarLoadVault.mockResolvedValue({ data: null });
     mocks.sidecarSaveVault.mockResolvedValue({ status: 'ok' });
@@ -170,6 +194,13 @@ describe('main bootstrap', () => {
     mocks.vaultSet.mockResolvedValue(undefined);
     mocks.vaultExport.mockResolvedValue('encrypted');
     mocks.vaultImport.mockResolvedValue(undefined);
+    mocks.vaultStoreGet.mockResolvedValue(undefined);
+    mocks.vaultStoreSet.mockResolvedValue(undefined);
+    mocks.vaultStoreExportEncrypted.mockResolvedValue('encrypted');
+    mocks.vaultStoreExportPlaintext.mockResolvedValue('plaintext');
+    mocks.vaultStoreImportPlaintext.mockResolvedValue(undefined);
+    mocks.vaultStoreSetEncryptionEnabled.mockResolvedValue(undefined);
+    mocks.vaultStoreIsUnlocked = true;
     mocks.voiceOnResult = null;
     mocks.resizeHandler = null;
     mocks.vaultOnUnlock = null;
@@ -200,9 +231,11 @@ describe('main bootstrap', () => {
         primary: { provider: 'openai', model: 'gpt-4o' },
       },
       commandAllowlist: [],
+      agentControl: {},
+      vaultEncryptionEnabled: true,
     });
     mocks.sidecarLoadVault.mockResolvedValueOnce({ data: 'vault-data' });
-    mocks.vaultGet.mockResolvedValueOnce('sk-test');
+    mocks.vaultStoreGet.mockResolvedValueOnce('sk-test');
 
     await import('../../src/main');
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -213,6 +246,35 @@ describe('main bootstrap', () => {
     mocks.vaultOnUnlock?.();
     await new Promise(resolve => setTimeout(resolve, 0));
 
+    expect(mocks.sidecarConfigureModel).toHaveBeenCalledWith(
+      'openai',
+      'gpt-4o',
+      'sk-test',
+      'primary',
+      undefined,
+      undefined,
+    );
+  });
+
+  it('bypasses vault UI when encryption is disabled', async () => {
+    mocks.sidecarGetConfig.mockResolvedValueOnce({
+      onboardingComplete: true,
+      workspacePath: null,
+      models: {
+        primary: { provider: 'openai', model: 'gpt-4o' },
+      },
+      commandAllowlist: [],
+      agentControl: {},
+      vaultEncryptionEnabled: false,
+    });
+    mocks.sidecarLoadVault.mockResolvedValueOnce({ data: '{"entries":{"apikey:primary":"sk-test"}}' });
+    mocks.vaultStoreGet.mockResolvedValueOnce('sk-test');
+
+    await import('../../src/main');
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(mocks.vaultUIShow).not.toHaveBeenCalled();
+    expect(mocks.vaultStoreImportPlaintext).toHaveBeenCalledWith('{"entries":{"apikey:primary":"sk-test"}}');
     expect(mocks.sidecarConfigureModel).toHaveBeenCalledWith(
       'openai',
       'gpt-4o',

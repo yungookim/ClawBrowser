@@ -92,6 +92,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 /* ---------- Tab Bar ---------- */
@@ -203,12 +204,16 @@ body {
   flex-direction: column;
   min-width: 0;
   height: 100%;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 #content-spacer {
   flex: 1;
   background: var(--bg);
   position: relative;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 /* ---------- Nav Bar ---------- */

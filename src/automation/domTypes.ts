@@ -88,7 +88,7 @@ export interface DomElementDescriptorBalanced {
 }
 
 export interface DomAutomationRequest {
-  requestId: string;
+  requestId?: string;
   tabId?: string;
   actions: DomAction[];
   timeoutMs?: number;

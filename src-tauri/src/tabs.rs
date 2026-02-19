@@ -397,10 +397,15 @@ pub fn create_tab(
         NewWindowResponse::Deny
     });
 
-    // Hide all existing content webviews
+    // Hide all existing content webviews and move off-screen
+    let offscreen = tauri::Rect {
+        position: PhysicalPosition::new(-10000_i32, -10000_i32).into(),
+        size: PhysicalSize::new(0_u32, 0_u32).into(),
+    };
     for existing_id in state.tabs.keys() {
         let existing_label = format!("tab-{}", existing_id);
         if let Some(webview) = app.get_webview(&existing_label) {
+            let _ = webview.set_bounds(offscreen);
             let _ = webview.hide();
         }
     }
@@ -470,10 +475,19 @@ pub fn switch_tab(
         return Err(format!("Tab {} not found", tab_id));
     }
 
-    // Hide all content webviews
+    let offscreen = tauri::Rect {
+        position: PhysicalPosition::new(-10000_i32, -10000_i32).into(),
+        size: PhysicalSize::new(0_u32, 0_u32).into(),
+    };
+
+    // Hide all content webviews and move off-screen
     for existing_id in state.tabs.keys() {
+        if existing_id == tab_id {
+            continue;
+        }
         let label = format!("tab-{}", existing_id);
         if let Some(webview) = app.get_webview(&label) {
+            let _ = webview.set_bounds(offscreen);
             let _ = webview.hide();
         }
     }
@@ -493,13 +507,20 @@ pub fn switch_tab(
 }
 
 /// Hide all content webviews without changing the active tab state.
+/// Moves each webview far off-screen so it cannot intercept pointer events
+/// even if the native layer remains in the window hierarchy.
 pub fn hide_all_tabs(
     app: &tauri::AppHandle,
     state: &TabState,
 ) -> Result<(), String> {
+    let offscreen = tauri::Rect {
+        position: PhysicalPosition::new(-10000_i32, -10000_i32).into(),
+        size: PhysicalSize::new(0_u32, 0_u32).into(),
+    };
     for existing_id in state.tabs.keys() {
         let label = format!("tab-{}", existing_id);
         if let Some(webview) = app.get_webview(&label) {
+            let _ = webview.set_bounds(offscreen);
             let _ = webview.hide();
         }
     }
@@ -550,11 +571,17 @@ pub fn run_js_in_tab(
     }
 }
 
-/// Reposition all content webviews after a window resize.
+/// Reposition only the active content webview after a window resize.
+/// Non-active webviews are left off-screen to avoid intercepting pointer events.
 pub fn reposition_webviews(
     app: &tauri::AppHandle,
     state: &TabState,
 ) -> Result<(), String> {
+    let active_id = match &state.active_tab {
+        Some(id) => id.clone(),
+        None => return Ok(()),
+    };
+
     let window = app
         .get_window("main")
         .ok_or("Main window not found")?;
@@ -565,12 +592,10 @@ pub fn reposition_webviews(
         size: size.into(),
     };
 
-    for tab_id in state.tabs.keys() {
-        let label = format!("tab-{}", tab_id);
-        if let Some(webview) = app.get_webview(&label) {
-            let _ = webview.set_auto_resize(false);
-            let _ = webview.set_bounds(bounds);
-        }
+    let label = format!("tab-{}", active_id);
+    if let Some(webview) = app.get_webview(&label) {
+        let _ = webview.set_auto_resize(false);
+        let _ = webview.set_bounds(bounds);
     }
 
     Ok(())

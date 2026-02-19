@@ -19,6 +19,9 @@ This file provides working guidance for AI agents contributing to ClawBrowser.
 ## Current Plans
 - Active project plans live under `docs/plans/` (see README for links).
 
+## Design Philosophy
+- **No rounded corners.** All UI elements must use square corners (`border-radius: 0`). Never use `border-radius` with a non-zero value. The CSS variables `--radius` and `--radius-sm` are set to `0` and must stay that way. Do not introduce hardcoded `border-radius` values.
+
 ## Architecture
 The correct architecture is an agentic loop:
 1. **Understand** — Parse the user's intent; ask clarifying questions if ambiguous
