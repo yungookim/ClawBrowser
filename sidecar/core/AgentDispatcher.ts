@@ -44,10 +44,12 @@ export class AgentDispatcher {
       destructive: params.destructive || false,
     };
 
+    console.error(`[AgentDispatcher] Sending agentRequest: reqId=${requestId} capability=${params.capability} action=${params.action} timeoutMs=${timeoutMs}`);
     this.notify('agentRequest', payload);
 
     return new Promise<AgentResult>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
+        console.error(`[AgentDispatcher] TIMEOUT reqId=${requestId} after ${timeoutMs}ms — pending count: ${this.pending.size}`);
         this.pending.delete(requestId);
         reject(new Error(`Agent request timeout (${requestId})`));
       }, timeoutMs);
@@ -56,9 +58,16 @@ export class AgentDispatcher {
   }
 
   handleResult(result: AgentResult): void {
-    if (!result || !result.requestId) return;
+    if (!result || !result.requestId) {
+      console.error(`[AgentDispatcher] handleResult: dropped — missing requestId`, JSON.stringify(result));
+      return;
+    }
     const pending = this.pending.get(result.requestId);
-    if (!pending) return;
+    if (!pending) {
+      console.error(`[AgentDispatcher] handleResult: no pending for reqId=${result.requestId} (ok=${result.ok}) — pending keys: [${[...this.pending.keys()].join(', ')}]`);
+      return;
+    }
+    console.error(`[AgentDispatcher] handleResult: resolved reqId=${result.requestId} ok=${result.ok}`);
     clearTimeout(pending.timeoutId);
     this.pending.delete(result.requestId);
     pending.resolve(result);

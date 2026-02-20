@@ -53,10 +53,12 @@ export class DomAutomation {
       descriptorMode: params.descriptorMode,
     };
 
+    console.error(`[DomAutomation/Sidecar] Sending domAutomationRequest: reqId=${requestId} tabId=${params.tabId || 'none'} actions=${actions.length} timeoutMs=${timeoutMs}`);
     this.notify('domAutomationRequest', requestPayload);
 
     return new Promise<DomAutomationResult>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
+        console.error(`[DomAutomation/Sidecar] TIMEOUT reqId=${requestId} after ${timeoutMs}ms — pending count: ${this.pending.size}`);
         this.pending.delete(requestId);
         reject(new Error(`Dom automation timeout (${requestId})`));
       }, timeoutMs);
@@ -65,9 +67,16 @@ export class DomAutomation {
   }
 
   handleResult(result: DomAutomationResult): void {
-    if (!result || !result.requestId) return;
+    if (!result || !result.requestId) {
+      console.error(`[DomAutomation/Sidecar] handleResult: dropped — missing requestId`, JSON.stringify(result));
+      return;
+    }
     const pending = this.pending.get(result.requestId);
-    if (!pending) return;
+    if (!pending) {
+      console.error(`[DomAutomation/Sidecar] handleResult: no pending for reqId=${result.requestId} — pending keys: [${[...this.pending.keys()].join(', ')}]`);
+      return;
+    }
+    console.error(`[DomAutomation/Sidecar] handleResult: resolved reqId=${result.requestId} ok=${result.ok}`);
     clearTimeout(pending.timeoutId);
     this.pending.delete(result.requestId);
     pending.resolve(result);

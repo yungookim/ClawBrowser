@@ -24,9 +24,12 @@ export class DomAutomationBridge {
 
   async start(): Promise<void> {
     if (this.unlisten) return;
+    console.log('[DomAutomationBridge] start: registering claw-dom-automation listener');
     this.unlisten = await listen<DomAutomationResult>('claw-dom-automation', (event) => {
+      console.log(`[DomAutomationBridge] EVENT received claw-dom-automation:`, JSON.stringify(event.payload ?? null).slice(0, 500));
       this.handleResult(event.payload);
     });
+    console.log('[DomAutomationBridge] start: listener registered');
   }
 
   async stop(): Promise<void> {
@@ -60,20 +63,27 @@ export class DomAutomationBridge {
   async executeRequest(request: DomAutomationRequest): Promise<DomAutomationResult> {
     if (!request.requestId) {
       request.requestId = this.createRequestId();
+      console.log(`[DomAutomationBridge] executeRequest: generated requestId=${request.requestId}`);
     }
     const requestId = request.requestId;
 
     const tabId = request.tabId || this.tabManager.getActiveTabId();
     if (!tabId) {
+      console.error(`[DomAutomationBridge] executeRequest: NO ACTIVE TAB — request.tabId=${request.tabId} activeTabId=${this.tabManager.getActiveTabId()}`);
       throw new Error('No active tab for dom automation');
     }
 
     request.tabId = tabId;
     const tab = this.tabManager.getTabById(tabId);
+    const tabUrl = tab?.url || 'unknown';
     const origin = Permissions.getOrigin(tab?.url);
+
+    console.log(`[DomAutomationBridge] executeRequest: reqId=${requestId} tabId=${tabId} url=${tabUrl} origin=${origin} actions=${request.actions?.length || 0} actionTypes=[${(request.actions || []).map((a: any) => a.type).join(',')}]`);
+
     if (Permissions.requiresPermission(origin)) {
       const allowed = await Permissions.ensureDomAutomation(origin || '');
       if (!allowed) {
+        console.error(`[DomAutomationBridge] executeRequest: BLOCKED by permissions for ${origin}`);
         throw new Error(`DOM automation blocked for ${origin}`);
       }
     }
@@ -81,8 +91,11 @@ export class DomAutomationBridge {
     const script = buildDomAutomationScript(request);
     const timeoutMs = typeof request.timeoutMs === 'number' ? request.timeoutMs : 30_000;
 
+    console.log(`[DomAutomationBridge] executeRequest: script built (${script.length} chars), timeoutMs=${timeoutMs}, injecting into tabId=${tabId}`);
+
     const resultPromise = new Promise<DomAutomationResult>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
+        console.error(`[DomAutomationBridge] TIMEOUT reqId=${requestId} after ${timeoutMs}ms — pending keys: [${[...this.pending.keys()].join(', ')}]`);
         this.pending.delete(requestId);
         this.decrementActive();
         reject(new Error(`Dom automation timeout (${requestId})`));
@@ -93,7 +106,9 @@ export class DomAutomationBridge {
     try {
       this.incrementActive();
       await this.tabManager.injectJs(tabId, script);
+      console.log(`[DomAutomationBridge] executeRequest: script injected successfully into tabId=${tabId}`);
     } catch (err) {
+      console.error(`[DomAutomationBridge] executeRequest: INJECTION FAILED tabId=${tabId}`, err);
       this.clearPending(requestId);
       this.decrementActive();
       const message = err instanceof Error ? err.message : String(err);
@@ -104,9 +119,16 @@ export class DomAutomationBridge {
   }
 
   private handleResult(result: DomAutomationResult): void {
-    if (!result || !result.requestId) return;
+    if (!result || !result.requestId) {
+      console.warn(`[DomAutomationBridge] handleResult: DROPPED — missing requestId. payload keys: [${result ? Object.keys(result).join(', ') : 'null'}]`);
+      return;
+    }
     const pending = this.pending.get(result.requestId);
-    if (!pending) return;
+    if (!pending) {
+      console.warn(`[DomAutomationBridge] handleResult: NO PENDING for reqId=${result.requestId} — pending keys: [${[...this.pending.keys()].join(', ')}]`);
+      return;
+    }
+    console.log(`[DomAutomationBridge] handleResult: RESOLVED reqId=${result.requestId} ok=${result.ok} results=${result.results?.length || 0}${result.error ? ` error="${result.error.message}"` : ''}`);
     this.pending.delete(result.requestId);
     clearTimeout(pending.timeoutId);
     this.decrementActive();

@@ -10,6 +10,16 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
   const MAX_HTML = 20000;
   const MAX_QUERY_RESULTS = 200;
 
+  const _log = (msg) => { try { console.log('[CLAW_DOM] ' + msg); } catch {} };
+  const _err = (msg) => { try { console.error('[CLAW_DOM] ' + msg); } catch {} };
+
+  _log('Bootstrap starting — url=' + location.href);
+  _log('window.__TAURI__ exists: ' + !!window.__TAURI__);
+  if (window.__TAURI__) {
+    _log('window.__TAURI__.event exists: ' + !!(window.__TAURI__ && window.__TAURI__.event));
+    _log('window.__TAURI__.event.emit is function: ' + !!(window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.emit === 'function'));
+  }
+
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const toArray = (list) => Array.prototype.slice.call(list || []);
 
@@ -24,10 +34,14 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
     try {
       const api = window.__TAURI__ && window.__TAURI__.event;
       if (api && typeof api.emit === 'function') {
+        _log('emit: sending claw-dom-automation — reqId=' + (payload && payload.requestId) + ' ok=' + (payload && payload.ok));
         api.emit('claw-dom-automation', payload);
+        _log('emit: sent successfully');
+      } else {
+        _err('emit: FAILED — window.__TAURI__.event.emit not available. __TAURI__=' + !!window.__TAURI__ + ' event=' + !!(window.__TAURI__ && window.__TAURI__.event));
       }
-    } catch {
-      // Ignore emit failures.
+    } catch (e) {
+      _err('emit: EXCEPTION — ' + (e && e.message || e));
     }
   };
 
@@ -764,6 +778,8 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
   };
 
   const run = async (request) => {
+    _log('run() called — reqId=' + (request && request.requestId) + ' actions=' + (request && request.actions ? request.actions.length : 0) + ' tabId=' + (request && request.tabId));
+
     const start = now();
     const results = [];
     let ok = true;
@@ -774,19 +790,23 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
 
     for (let i = 0; i < actions.length; i += 1) {
       const action = actions[i];
+      _log('action[' + i + '] type=' + action.type);
       const handler = actionHandlers[action.type];
       if (!handler) {
         ok = false;
         error = { message: 'Unknown action type: ' + action.type, actionIndex: i, actionType: action.type };
+        _err('action[' + i + '] UNKNOWN type: ' + action.type);
         break;
       }
       try {
         const value = await handler(action);
         results.push({ type: action.type, value: toSerializable(value) });
+        _log('action[' + i + '] ' + action.type + ' OK');
       } catch (err) {
         ok = false;
         const message = err && err.message ? err.message : safeStringify(err);
         error = { message, actionIndex: i, actionType: action.type, stack: err && err.stack ? String(err.stack) : undefined };
+        _err('action[' + i + '] ' + action.type + ' FAILED: ' + message);
         break;
       }
     }
@@ -813,6 +833,7 @@ const DOM_AUTOMATION_BOOTSTRAP = String.raw`
       },
     };
 
+    _log('run() complete — reqId=' + request.requestId + ' ok=' + ok + ' results=' + finalResults.length + ' durationMs=' + Math.round(durationMs) + (error ? ' error="' + error.message + '"' : ''));
     emit(payload);
   };
 

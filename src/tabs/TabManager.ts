@@ -95,12 +95,12 @@ export class TabManager {
   }
 
   async closeTab(id: string): Promise<void> {
-    await invoke('close_tab', { tabId: id });
+    const newActiveId: string | null = await invoke('close_tab', { tabId: id });
     this.tabs.delete(id);
 
     if (this.activeTabId === id) {
-      const remaining = Array.from(this.tabs.keys());
-      this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+      // Use the backend's choice of next active tab to stay in sync
+      this.activeTabId = newActiveId;
     }
 
     this.notify();

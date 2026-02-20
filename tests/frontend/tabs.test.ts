@@ -23,7 +23,7 @@ describe('TabManager', () => {
     // Default mock: create_tab returns a UUID
     mockedInvoke.mockImplementation(async (cmd: string, _args?: unknown) => {
       if (cmd === 'create_tab') return 'tab-uuid-1';
-      if (cmd === 'close_tab') return undefined;
+      if (cmd === 'close_tab') return null;
       if (cmd === 'switch_tab') return undefined;
       if (cmd === 'navigate_tab') return undefined;
       if (cmd === 'run_js_in_tab') return '';
@@ -69,6 +69,8 @@ describe('TabManager', () => {
         callCount++;
         return `tab-uuid-${callCount}`;
       }
+      // Backend returns the new active tab ID on close
+      if (cmd === 'close_tab') return 'tab-uuid-1';
       return undefined;
     });
 
@@ -78,7 +80,7 @@ describe('TabManager', () => {
     expect(tabManager.getActiveTabId()).toBe('tab-uuid-2');
 
     await tabManager.closeTab('tab-uuid-2');
-    // Should fall back to remaining tab
+    // Should use the backend's choice of new active tab
     expect(tabManager.getActiveTabId()).toBe('tab-uuid-1');
   });
 

@@ -4,3 +4,4 @@ src-tauri/target/
 *.log
 src-tauri/log/
 .DS_Store
+coverage/

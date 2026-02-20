@@ -473,8 +473,9 @@ function registerHandlers(): void {
   });
 
   handlers.set('domAutomationResult', async (params) => {
+    console.error(`[sidecar] domAutomationResult received: reqId=${(params as any)?.requestId} ok=${(params as any)?.ok}`);
     if (!isDomAutomationResult(params)) {
-      console.error('[sidecar] Invalid domAutomationResult payload');
+      console.error('[sidecar] Invalid domAutomationResult payload:', JSON.stringify(params).slice(0, 500));
       return { status: 'error' };
     }
     domAutomation.handleResult(params);
@@ -482,8 +483,9 @@ function registerHandlers(): void {
   });
 
   handlers.set('agentResult', async (params) => {
+    console.error(`[sidecar] agentResult received: reqId=${(params as any)?.requestId} ok=${(params as any)?.ok}`);
     if (!isAgentResult(params)) {
-      console.error('[sidecar] Invalid agentResult payload');
+      console.error('[sidecar] Invalid agentResult payload:', JSON.stringify(params).slice(0, 500));
       return { status: 'error' };
     }
     agentDispatcher.handleResult(params);

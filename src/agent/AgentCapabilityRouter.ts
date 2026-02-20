@@ -29,8 +29,10 @@ export class AgentCapabilityRouter {
     this.started = true;
     this.sidecar.onNotification((method, params) => {
       if (method !== 'agentRequest') return;
-      this.handleRequest(params as AgentRequest).catch((err) => {
-        console.error('Agent request failed:', err);
+      const req = params as AgentRequest;
+      console.log(`[AgentCapabilityRouter] agentRequest received: reqId=${req?.requestId} capability=${req?.capability} action=${req?.action}`);
+      this.handleRequest(req).catch((err) => {
+        console.error('[AgentCapabilityRouter] handleRequest error:', err);
       });
     });
   }
@@ -190,8 +192,16 @@ export class AgentCapabilityRouter {
         : undefined,
     };
 
-    const result = await this.domAutomation.executeRequest(request);
-    return result;
+    console.log(`[AgentCapabilityRouter] handleDom: reqId=${request.requestId || 'none (bridge will generate)'} tabId=${request.tabId || 'none (will use active)'} actions=${actions.length} actionTypes=[${actions.map((a: any) => a.type).join(',')}]`);
+
+    try {
+      const result = await this.domAutomation.executeRequest(request);
+      console.log(`[AgentCapabilityRouter] handleDom: SUCCESS reqId=${(result as any)?.requestId} ok=${(result as any)?.ok}`);
+      return result;
+    } catch (err) {
+      console.error(`[AgentCapabilityRouter] handleDom: FAILED`, err);
+      throw err;
+    }
   }
 
   private getRequiredString(params: Record<string, unknown>, key: string): string {
@@ -203,10 +213,12 @@ export class AgentCapabilityRouter {
   }
 
   private async sendResult(result: AgentResult): Promise<void> {
+    console.log(`[AgentCapabilityRouter] sendResult: reqId=${result.requestId} ok=${result.ok}${result.error ? ` error="${result.error.message}"` : ''}`);
     try {
       await this.sidecar.send('agentResult', result);
+      console.log(`[AgentCapabilityRouter] sendResult: sent successfully`);
     } catch (err) {
-      console.warn('Failed to send agentResult to sidecar:', err);
+      console.warn('[AgentCapabilityRouter] sendResult: FAILED to send agentResult to sidecar:', err);
     }
   }
 }

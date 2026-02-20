@@ -17,7 +17,7 @@ pub fn close_tab(
     app: tauri::AppHandle,
     state: State<'_, Mutex<TabState>>,
     tab_id: String,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let mut state = state.lock().map_err(|e| e.to_string())?;
     tabs::close_tab(&app, &mut state, &tab_id)
 }

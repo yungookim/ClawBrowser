@@ -438,11 +438,12 @@ pub fn create_tab(
 }
 
 /// Close a content webview tab.
+/// Returns the new active tab ID (if any) so the frontend can stay in sync.
 pub fn close_tab(
     app: &tauri::AppHandle,
     state: &mut TabState,
     tab_id: &str,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let label = format!("tab-{}", tab_id);
     if let Some(webview) = app.get_webview(&label) {
         let _ = webview.close();
@@ -456,13 +457,16 @@ pub fn close_tab(
         if let Some(ref new_active) = state.active_tab {
             let new_label = format!("tab-{}", new_active);
             if let Some(webview) = app.get_webview(&new_label) {
+                if let Some(window) = app.get_window("main") {
+                    let _ = apply_bounds(&window, &webview, state);
+                }
                 let _ = webview.show();
                 let _ = webview.set_focus();
             }
         }
     }
 
-    Ok(())
+    Ok(state.active_tab.clone())
 }
 
 /// Switch to a tab -- show the target webview, hide all others.

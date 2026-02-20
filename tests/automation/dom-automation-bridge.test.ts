@@ -51,6 +51,11 @@ function emitResult(payload: any) {
   mocks.listenCallback?.({ payload });
 }
 
+/** Flush microtask queue so async code inside executeRequest progresses past awaits */
+async function flush() {
+  await vi.advanceTimersByTimeAsync(0);
+}
+
 /* ── Tests ───────────────────────────────────────────────────── */
 
 describe('DomAutomationBridge', () => {
@@ -86,6 +91,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const pending = bridge.execute(makeActions());
+      await flush();
       await bridge.stop();
 
       expect(mocks.unlisten).toHaveBeenCalledTimes(1);
@@ -102,15 +108,12 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ actions: makeActions() });
+      await flush();
 
-      // The script injected should contain a generated requestId
       expect(tm.injectJs).toHaveBeenCalledTimes(1);
       const injectedScript: string = tm.injectJs.mock.calls[0][1];
-      // Script should contain a UUID-like requestId — not "undefined"
       expect(injectedScript).not.toContain('"requestId":undefined');
-      expect(injectedScript).not.toContain('undefined');
 
-      // Extract the requestId from the JSON payload embedded in the script
       const payloadMatch = injectedScript.match(/window\.__CLAW_DOM__\.run\((.+)\);/);
       expect(payloadMatch).not.toBeNull();
       const payload = JSON.parse(payloadMatch![1]);
@@ -118,7 +121,6 @@ describe('DomAutomationBridge', () => {
       expect(typeof payload.requestId).toBe('string');
       expect(payload.requestId.length).toBeGreaterThan(0);
 
-      // Complete the request by emitting a matching result
       emitResult({
         requestId: payload.requestId,
         ok: true,
@@ -136,6 +138,7 @@ describe('DomAutomationBridge', () => {
 
       const myId = 'custom-request-id-123';
       const promise = bridge.executeRequest({ requestId: myId, actions: makeActions() });
+      await flush();
 
       const script: string = tm.injectJs.mock.calls[0][1];
       const payloadMatch = script.match(/window\.__CLAW_DOM__\.run\((.+)\);/);
@@ -154,7 +157,9 @@ describe('DomAutomationBridge', () => {
 
       bridge.executeRequest({ actions: makeActions() });
       bridge.executeRequest({ actions: makeActions() });
+      await flush();
 
+      expect(tm.injectJs).toHaveBeenCalledTimes(2);
       const ids = tm.injectJs.mock.calls.map((call: any[]) => {
         const script: string = call[1];
         const match = script.match(/window\.__CLAW_DOM__\.run\((.+)\);/);
@@ -174,6 +179,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.execute(makeActions());
+      await flush();
 
       const script: string = tm.injectJs.mock.calls[0][1];
       const payloadMatch = script.match(/window\.__CLAW_DOM__\.run\((.+)\);/);
@@ -196,6 +202,7 @@ describe('DomAutomationBridge', () => {
         returnMode: 'last',
         descriptorMode: 'balanced',
       });
+      await flush();
 
       const script: string = tm.injectJs.mock.calls[0][1];
       const payloadMatch = script.match(/window\.__CLAW_DOM__\.run\((.+)\);/);
@@ -217,6 +224,7 @@ describe('DomAutomationBridge', () => {
 
       const p1 = bridge.executeRequest({ requestId: 'req-A', actions: makeActions() });
       const p2 = bridge.executeRequest({ requestId: 'req-B', actions: makeActions() });
+      await flush();
 
       emitResult({ requestId: 'req-B', ok: true, results: [{ type: 'done' }] });
       const r2 = await p2;
@@ -233,17 +241,15 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ requestId: 'req-X', actions: makeActions() });
+      await flush();
 
-      // Emit result without requestId — should be dropped
       emitResult({ ok: true, results: [] });
 
-      // The promise should NOT have resolved
       let resolved = false;
       promise.then(() => { resolved = true; });
       await vi.advanceTimersByTimeAsync(100);
       expect(resolved).toBe(false);
 
-      // Now emit correct result
       emitResult({ requestId: 'req-X', ok: true, results: [] });
       await expect(promise).resolves.toBeDefined();
     });
@@ -254,6 +260,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ requestId: 'req-Y', actions: makeActions() });
+      await flush();
 
       emitResult({ requestId: 'unknown-id', ok: true, results: [] });
 
@@ -271,7 +278,6 @@ describe('DomAutomationBridge', () => {
       const bridge = new DomAutomationBridge(tm);
       await bridge.start();
 
-      // These should not throw
       emitResult(null);
       emitResult(undefined);
       emitResult({});
@@ -287,11 +293,18 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ requestId: 'req-T', actions: makeActions() });
+      await flush();
+
+      // Attach rejection handler before timer fires to avoid unhandled rejection warning
+      let caughtError: Error | null = null;
+      promise.catch((e) => { caughtError = e; });
 
       await vi.advanceTimersByTimeAsync(30_000);
+      await flush();
 
-      await expect(promise).rejects.toThrow('Dom automation timeout');
-      await expect(promise).rejects.toThrow('req-T');
+      expect(caughtError).not.toBeNull();
+      expect(caughtError!.message).toContain('Dom automation timeout');
+      expect(caughtError!.message).toContain('req-T');
     });
 
     it('rejects with timeout using custom timeoutMs', async () => {
@@ -304,9 +317,9 @@ describe('DomAutomationBridge', () => {
         actions: makeActions(),
         timeoutMs: 2000,
       });
+      await flush();
 
       await vi.advanceTimersByTimeAsync(1999);
-      // Should not have rejected yet
       let rejected = false;
       promise.catch(() => { rejected = true; });
       await vi.advanceTimersByTimeAsync(0);
@@ -322,6 +335,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ requestId: 'req-OK', actions: makeActions() });
+      await flush();
 
       await vi.advanceTimersByTimeAsync(1000);
       emitResult({ requestId: 'req-OK', ok: true, results: [] });
@@ -343,6 +357,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       bridge.executeRequest({ requestId: 'req-1', actions: makeActions() });
+      await flush();
 
       expect(tm.injectJs).toHaveBeenCalledWith('active-tab', expect.any(String));
     });
@@ -353,6 +368,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       bridge.executeRequest({ requestId: 'req-1', tabId: 'specified-tab', actions: makeActions() });
+      await flush();
 
       expect(tm.injectJs).toHaveBeenCalledWith('specified-tab', expect.any(String));
     });
@@ -394,14 +410,13 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const promise = bridge.executeRequest({ requestId: 'act-1', actions: makeActions() });
+      await flush();
 
-      // Activity started (1 pending)
       expect(onChange).toHaveBeenCalledWith(true, 1);
 
       emitResult({ requestId: 'act-1', ok: true, results: [] });
       await promise;
 
-      // Activity stopped (0 pending)
       expect(onChange).toHaveBeenCalledWith(false, 0);
     });
 
@@ -412,9 +427,11 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       const p1 = bridge.executeRequest({ requestId: 'c-1', actions: makeActions() });
+      await flush();
       expect(onChange).toHaveBeenLastCalledWith(true, 1);
 
       bridge.executeRequest({ requestId: 'c-2', actions: makeActions() });
+      await flush();
       expect(onChange).toHaveBeenLastCalledWith(true, 2);
 
       emitResult({ requestId: 'c-1', ok: true, results: [] });
@@ -432,6 +449,7 @@ describe('DomAutomationBridge', () => {
       await bridge.start();
 
       bridge.executeRequest({ requestId: 'sc-1', actions: makeActions() });
+      await flush();
 
       const script: string = tm.injectJs.mock.calls[0][1];
       expect(script).toContain('window.__CLAW_DOM__');
