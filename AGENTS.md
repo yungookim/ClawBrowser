@@ -148,5 +148,7 @@ Use the browser automation router artifacts and analyzer to iterate on reliabili
 - On failure, capture a hybrid DOM snapshot: full A11y tree plus minimal DOM JSON around failure‑adjacent nodes.
 - Logs and snapshots must apply PII redaction to input values and URL query params.
 - Analyzer output is written to `docs/ops/browser-automation-report.md`.
+- Analyzer script: `sidecar/tools/analyze-browser-automation.js` (runs automatically after `npm run test`).
+- Baseline metrics stored in `docs/ops/browser-automation-baseline.json`.
 - Regression policy: fail if Stagehand success drops >10% or any new error exceeds 5% of attempts.
 - Retention: keep only the last 20 runs under `CLAW_LOG_DIR/browser-automation/`.

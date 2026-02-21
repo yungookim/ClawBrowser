@@ -5,6 +5,7 @@ import type { ToolRegistry, ParsedToolCall } from './ToolRegistry.js';
 import type { AgentDispatcher } from './AgentDispatcher.js';
 import type { CommandExecutor } from './CommandExecutor.js';
 import type { StagehandBridge } from '../dom/StagehandBridge.js';
+import { BrowserAutomationRouter, createBrowserAutomationTraceId, type BrowserAutomationContext } from '../dom/BrowserAutomationRouter.js';
 import type { SystemLogger } from '../logging/SystemLogger.js';
 
 type Notify = (method: string, params?: Record<string, unknown>) => void;
@@ -143,7 +144,9 @@ export class Swarm {
   private notify: Notify | null;
   private stagehandBridge: StagehandBridge | null;
   private systemLogger: SystemLogger | null;
+  private browserAutomationRouter: BrowserAutomationRouter | null;
   private aborted = false;
+  private currentTraceId: string | null = null;
 
   constructor(
     modelManager: ModelManager,
@@ -153,6 +156,7 @@ export class Swarm {
     notify?: Notify,
     stagehandBridge?: StagehandBridge,
     systemLogger?: SystemLogger,
+    browserAutomationRouter?: BrowserAutomationRouter,
   ) {
     this.modelManager = modelManager;
     this.toolRegistry = toolRegistry || null;
@@ -161,6 +165,7 @@ export class Swarm {
     this.notify = notify || null;
     this.stagehandBridge = stagehandBridge || null;
     this.systemLogger = systemLogger || null;
+    this.browserAutomationRouter = browserAutomationRouter || null;
   }
 
   cancel(): void {
@@ -174,23 +179,28 @@ export class Swarm {
     browserContext?: SwarmBrowserContext,
   ): Promise<string> {
     this.aborted = false;
+    this.currentTraceId = createBrowserAutomationTraceId();
     const graph = this.buildGraph();
     const compiled = graph.compile();
 
-    const result = await compiled.invoke({
-      task,
-      plan: [],
-      currentStep: 0,
-      stepResults: [],
-      finalResult: '',
-      context,
-      browserContext: browserContext || {},
-      evalVerdict: 'ok' as EvalVerdict,
-      totalStepsExecuted: 0,
-      nodeVisits: 0,
-    }, { recursionLimit: Swarm.RECURSION_LIMIT });
+    try {
+      const result = await compiled.invoke({
+        task,
+        plan: [],
+        currentStep: 0,
+        stepResults: [],
+        finalResult: '',
+        context,
+        browserContext: browserContext || {},
+        evalVerdict: 'ok' as EvalVerdict,
+        totalStepsExecuted: 0,
+        nodeVisits: 0,
+      }, { recursionLimit: Swarm.RECURSION_LIMIT });
 
-    return result.finalResult;
+      return result.finalResult;
+    } finally {
+      this.currentTraceId = null;
+    }
   }
 
   private buildGraph() {
@@ -353,8 +363,11 @@ export class Swarm {
     let lastContent = '';
     let consecutiveFailures = 0;
     const stepDeadline = Date.now() + Swarm.STEP_TIMEOUT_MS;
+    const useLegacyStagehandFallback = !this.browserAutomationRouter;
     let stagehandRetryUsed = false;
     let stagehandDisabled = false;
+    const traceId = this.currentTraceId || createBrowserAutomationTraceId();
+    const stepId = `step-${state.currentStep}`;
 
     try {
       for (let i = 0; i < Swarm.MAX_TOOL_ITERATIONS_PER_STEP; i++) {
@@ -376,11 +389,11 @@ export class Swarm {
         const isStagehandCall = toolCall.kind === 'agent' && toolCall.capability === 'stagehand';
         let toolResult: Awaited<ReturnType<Swarm['executeToolCall']>>;
 
-        if (isStagehandCall && stagehandDisabled) {
+        if (isStagehandCall && useLegacyStagehandFallback && stagehandDisabled) {
           const reason = 'Stagehand disabled; use webview tools.';
           toolResult = { tool: toolCall.tool, ok: false, error: reason };
         } else {
-          toolResult = await this.executeToolCall(toolCall);
+          toolResult = await this.executeToolCall(toolCall, { traceId, stepId });
         }
 
         if (!toolResult.ok) {
@@ -416,7 +429,7 @@ export class Swarm {
           `Tool result for ${toolResult.tool}: ${toolResult.ok ? 'Success' : 'Error'}\n${resultText}`
         ));
 
-        if (isStagehandCall) {
+        if (isStagehandCall && useLegacyStagehandFallback) {
           if (stagehandDisabled) {
             const reason = toolResult.error || 'Stagehand disabled; use webview tools.';
             this.logStagehandFallback(toolCall.action, stagehandRetryUsed ? 2 : 1, reason, 'webview');
@@ -681,11 +694,15 @@ export class Swarm {
     }
   }
 
-  private async executeToolCall(toolCall: ParsedToolCall): Promise<{
+  private async executeToolCall(
+    toolCall: ParsedToolCall,
+    context?: BrowserAutomationContext,
+  ): Promise<{
     tool: string;
     ok: boolean;
     data?: unknown;
     error?: string;
+    meta?: Record<string, unknown>;
   }> {
     if (toolCall.kind === 'invalid') {
       return { tool: toolCall.tool || 'unknown', ok: false, error: toolCall.error };
@@ -702,6 +719,9 @@ export class Swarm {
       }
     }
     if (toolCall.kind === 'agent' && toolCall.capability === 'stagehand') {
+      if (this.browserAutomationRouter && context) {
+        return this.executeBrowserAutomation(toolCall, context);
+      }
       return this.executeStagehandTool(toolCall);
     }
     if (!this.dispatcher) {
@@ -720,6 +740,29 @@ export class Swarm {
     } catch (err) {
       return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  private async executeBrowserAutomation(
+    toolCall: Extract<ParsedToolCall, { kind: 'agent' }>,
+    context: BrowserAutomationContext,
+  ): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+    meta?: Record<string, unknown>;
+  }> {
+    if (!this.browserAutomationRouter) {
+      return { tool: toolCall.tool, ok: false, error: 'Browser automation router unavailable.' };
+    }
+    const result = await this.browserAutomationRouter.execute(toolCall, context);
+    return {
+      tool: toolCall.tool,
+      ok: result.ok,
+      data: result.data,
+      error: result.error,
+      meta: result.meta ? { ...result.meta } : undefined,
+    };
   }
 
   private logStagehandFallback(

@@ -5,6 +5,7 @@ import type { ModelRole } from './ModelManager.js';
 import { ToolRegistry, type ParsedToolCall } from './ToolRegistry.js';
 import { AgentDispatcher } from './AgentDispatcher.js';
 import type { StagehandBridge } from '../dom/StagehandBridge.js';
+import { BrowserAutomationRouter, createBrowserAutomationTraceId, type BrowserAutomationContext } from '../dom/BrowserAutomationRouter.js';
 import type { SystemLogger } from '../logging/SystemLogger.js';
 
 const MAX_HISTORY = 40;
@@ -60,6 +61,7 @@ export class AgentCore {
   private dispatcher: AgentDispatcher | null;
   private stagehandBridge: StagehandBridge | null;
   private systemLogger: SystemLogger | null;
+  private browserAutomationRouter: BrowserAutomationRouter | null;
   private history: BaseMessage[] = [];
 
   constructor(
@@ -69,6 +71,7 @@ export class AgentCore {
     dispatcher?: AgentDispatcher,
     stagehandBridge?: StagehandBridge,
     systemLogger?: SystemLogger,
+    browserAutomationRouter?: BrowserAutomationRouter,
   ) {
     this.modelManager = modelManager;
     this.commandExecutor = commandExecutor || null;
@@ -76,6 +79,7 @@ export class AgentCore {
     this.dispatcher = dispatcher || null;
     this.stagehandBridge = stagehandBridge || null;
     this.systemLogger = systemLogger || null;
+    this.browserAutomationRouter = browserAutomationRouter || null;
   }
 
   /** Build the system prompt from workspace files and current context. */
@@ -259,6 +263,8 @@ export class AgentCore {
   ): Promise<string> {
     let currentMessages = [...messages];
     let lastContent = '';
+    const traceId = createBrowserAutomationTraceId();
+    const useLegacyStagehandFallback = !this.browserAutomationRouter;
     let stagehandRetryUsed = false;
     let stagehandDisabled = false;
 
@@ -274,11 +280,11 @@ export class AgentCore {
       const isStagehandCall = toolCall.kind === 'agent' && toolCall.capability === 'stagehand';
       let toolResult: Awaited<ReturnType<AgentCore['executeToolCall']>>;
 
-      if (isStagehandCall && stagehandDisabled) {
+      if (isStagehandCall && useLegacyStagehandFallback && stagehandDisabled) {
         const reason = 'Stagehand disabled; use webview tools.';
         toolResult = { tool: toolCall.tool, ok: false, error: reason };
       } else {
-        toolResult = await this.executeToolCall(toolCall);
+        toolResult = await this.executeToolCall(toolCall, { traceId });
       }
 
       currentMessages = [
@@ -287,7 +293,7 @@ export class AgentCore {
         new HumanMessage(compressForLLM(JSON.stringify(toolResult), MAX_TOOL_RESULT_CHARS)),
       ];
 
-      if (isStagehandCall) {
+      if (isStagehandCall && useLegacyStagehandFallback) {
         if (stagehandDisabled) {
           const reason = toolResult.error || 'Stagehand disabled; use webview tools.';
           this.logStagehandFallback(toolCall.action, stagehandRetryUsed ? 2 : 1, reason, 'webview');
@@ -320,7 +326,10 @@ export class AgentCore {
     return lastContent;
   }
 
-  private async executeToolCall(toolCall: ParsedToolCall): Promise<{
+  private async executeToolCall(
+    toolCall: ParsedToolCall,
+    context?: BrowserAutomationContext,
+  ): Promise<{
     tool: string;
     ok: boolean;
     data?: unknown;
@@ -328,6 +337,7 @@ export class AgentCore {
     exitCode?: number;
     stdout?: string;
     stderr?: string;
+    meta?: Record<string, unknown>;
   }> {
     if (toolCall.kind === 'invalid') {
       return { tool: toolCall.tool || 'unknown', ok: false, error: toolCall.error };
@@ -346,6 +356,9 @@ export class AgentCore {
     }
 
     if (toolCall.kind === 'agent' && toolCall.capability === 'stagehand') {
+      if (this.browserAutomationRouter && context) {
+        return this.executeBrowserAutomation(toolCall, context);
+      }
       return this.executeStagehandTool(toolCall);
     }
 
@@ -367,6 +380,29 @@ export class AgentCore {
     } catch (err) {
       return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  private async executeBrowserAutomation(
+    toolCall: Extract<ParsedToolCall, { kind: 'agent' }>,
+    context: BrowserAutomationContext,
+  ): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+    meta?: Record<string, unknown>;
+  }> {
+    if (!this.browserAutomationRouter) {
+      return { tool: toolCall.tool, ok: false, error: 'Browser automation router unavailable.' };
+    }
+    const result = await this.browserAutomationRouter.execute(toolCall, context);
+    return {
+      tool: toolCall.tool,
+      ok: result.ok,
+      data: result.data,
+      error: result.error,
+      meta: result.meta ? { ...result.meta } : undefined,
+    };
   }
 
   private async executeStagehandTool(toolCall: Extract<ParsedToolCall, { kind: 'agent' }>): Promise<{

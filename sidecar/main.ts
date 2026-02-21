@@ -11,6 +11,9 @@ import { Heartbeat } from './cron/Heartbeat.js';
 import { Reflection } from './cron/Reflection.js';
 import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
 import { StagehandBridge } from './dom/StagehandBridge.js';
+import { BrowserAutomationRouter } from './dom/BrowserAutomationRouter.js';
+import { StagehandProvider } from './dom/providers/StagehandProvider.js';
+import { WebviewProvider } from './dom/providers/WebviewProvider.js';
 import { ConfigStore, type AppConfig, type CommandAllowlistEntry } from './core/ConfigStore.js';
 import { CommandExecutor } from './core/CommandExecutor.js';
 import { ToolRegistry } from './core/ToolRegistry.js';
@@ -68,6 +71,7 @@ let heartbeat: Heartbeat;
 let reflection: Reflection;
 let domAutomation: DomAutomation;
 let stagehandBridge: StagehandBridge | undefined;
+let browserAutomationRouter: BrowserAutomationRouter | undefined;
 let configStore: ConfigStore;
 let appConfig: AppConfig;
 let commandExecutor: CommandExecutor;
@@ -121,11 +125,11 @@ function isAgentResult(value: unknown): value is AgentResult {
 
 /** Initialize all subsystems. */
 async function boot(): Promise<void> {
-  systemLogger = new SystemLogger();
   const devLogBaseDir = resolveDevLogBaseDir();
-  if (devLogBaseDir) {
-    systemLogger.setLogsDir(path.join(devLogBaseDir, 'system'));
-  }
+  systemLogger = new SystemLogger(devLogBaseDir
+    ? { logsDir: path.join(devLogBaseDir, 'system'), minLevel: 'debug' }
+    : undefined,
+  );
   try {
     await systemLogger.initialize();
     systemLogger.attachConsole();
@@ -139,7 +143,7 @@ async function boot(): Promise<void> {
   modelManager = new ModelManager();
   configStore = new ConfigStore();
   appConfig = await configStore.load();
-  stagehandBridge = new StagehandBridge(modelManager, configStore);
+  stagehandBridge = new StagehandBridge(modelManager, configStore, { systemLogger });
   commandExecutor = new CommandExecutor();
   try {
     commandExecutor.setAllowlist(appConfig.commandAllowlist);
@@ -151,6 +155,15 @@ async function boot(): Promise<void> {
   if (!agentDispatcher) {
     agentDispatcher = new AgentDispatcher(sendNotification);
   }
+  if (!browserAutomationRouter) {
+    const stagehandProvider = new StagehandProvider(stagehandBridge);
+    const webviewProvider = new WebviewProvider(agentDispatcher, domAutomation, modelManager, systemLogger);
+    browserAutomationRouter = new BrowserAutomationRouter({
+      stagehandProvider,
+      webviewProvider,
+      systemLogger,
+    });
+  }
   agentCore = new AgentCore(
     modelManager,
     commandExecutor,
@@ -158,6 +171,7 @@ async function boot(): Promise<void> {
     agentDispatcher,
     stagehandBridge,
     systemLogger,
+    browserAutomationRouter,
   );
   swarm = new Swarm(
     modelManager,
@@ -167,6 +181,7 @@ async function boot(): Promise<void> {
     sendNotification,
     stagehandBridge,
     systemLogger,
+    browserAutomationRouter,
   );
 
   await configureWorkspace(appConfig.workspacePath);

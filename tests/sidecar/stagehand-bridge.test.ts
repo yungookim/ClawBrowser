@@ -7,6 +7,9 @@ type MockPage = {
   title: ReturnType<typeof vi.fn>;
   url: ReturnType<typeof vi.fn>;
   screenshot: ReturnType<typeof vi.fn>;
+  act: ReturnType<typeof vi.fn>;
+  extract: ReturnType<typeof vi.fn>;
+  observe: ReturnType<typeof vi.fn>;
 };
 
 type MockContext = {
@@ -57,6 +60,9 @@ function setupStagehandMocks(): void {
     title: vi.fn().mockResolvedValue('Example'),
     url: vi.fn().mockReturnValue('https://example.com'),
     screenshot: vi.fn().mockResolvedValue(Buffer.from('image')),
+    act: stagehandMocks.act,
+    extract: stagehandMocks.extract,
+    observe: stagehandMocks.observe,
   };
 
   stagehandMocks.context = {
@@ -73,6 +79,7 @@ function setupStagehandMocks(): void {
     act: stagehandMocks.act,
     extract: stagehandMocks.extract,
     observe: stagehandMocks.observe,
+    page: stagehandMocks.page,
     context: stagehandMocks.context,
     browser: stagehandMocks.browser,
   }));
@@ -139,7 +146,7 @@ describe('StagehandBridge', () => {
 
     const nav = await bridge.navigate('https://example.com');
     const act = await bridge.act('click');
-    const extract = await bridge.extract('extract', { foo: 'bar' });
+    const extract = await bridge.extract('extract');
     const observe = await bridge.observe('observe');
     const shot = await bridge.screenshot();
 
@@ -149,6 +156,57 @@ describe('StagehandBridge', () => {
     expect(observe).toEqual([{ type: 'click', selector: '#button' }]);
     expect(shot.mime).toBe('image/png');
     expect(shot.dataBase64).toBe(Buffer.from('image').toString('base64'));
+    expect(stagehandMocks.context?.newPage).toHaveBeenCalled();
+  });
+
+  it('opens a new tab when instruction includes a URL', async () => {
+    const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    await bridge.extract('Open https://example.com and extract');
+
+    expect(stagehandMocks.context?.newPage).toHaveBeenCalledTimes(1);
+    expect(stagehandMocks.page?.goto).toHaveBeenCalledWith('https://example.com');
+  });
+
+  it('converts JSON schema to Zod for extract', async () => {
+    const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    await bridge.extract('extract price', {
+      type: 'object',
+      properties: {
+        price: { type: 'number' },
+      },
+    });
+
+    const callArg = stagehandMocks.extract.mock.calls[0][0];
+    expect(callArg).toMatchObject({ instruction: 'extract price' });
+    expect(typeof callArg.schema?.safeParse).toBe('function');
+  });
+
+  it('wraps non-object schema and unwraps result', async () => {
+    stagehandMocks.extract.mockResolvedValueOnce({ result: [{ title: 'A' }] });
+
+    const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    const result = await bridge.extract('extract list', {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+        },
+      },
+    });
+
+    const callArg = stagehandMocks.extract.mock.calls[0][0];
+    expect(typeof callArg.schema?._def?.shape).toBe('function');
+    expect(result).toEqual([{ title: 'A' }]);
   });
 
   it('closes and reports active state', async () => {
@@ -183,7 +241,8 @@ describe('StagehandBridge', () => {
     await bridge.act('do');
 
     const options = stagehandMocks.createStagehand.mock.calls[0][0];
-    expect(options.model).toBe('openai/gpt-4o');
+    expect(options.modelName || options.model).toBe('openai/gpt-4o');
+    expect(options.modelClientOptions?.apiKey).toBe('test-key');
   });
 
   it('falls back to ConfigStore when ModelManager has no primary', async () => {
@@ -196,7 +255,7 @@ describe('StagehandBridge', () => {
     await bridge.act('do');
 
     const options = stagehandMocks.createStagehand.mock.calls[0][0];
-    expect(options.model).toBe('anthropic/claude-3-5');
+    expect(options.modelName || options.model).toBe('anthropic/claude-3-5');
   });
 
   it('defaults to openai/gpt-4o when no model config exists', async () => {
@@ -207,7 +266,34 @@ describe('StagehandBridge', () => {
     await bridge.act('do');
 
     const options = stagehandMocks.createStagehand.mock.calls[0][0];
-    expect(options.model).toBe('openai/gpt-4o');
+    expect(options.modelName || options.model).toBe('openai/gpt-4o');
+  });
+
+  it('reinitializes when model config changes', async () => {
+    const modelManager = new ModelManager();
+    modelManager.configure({
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'key-1',
+      role: 'primary',
+    });
+
+    const bridge = new StagehandBridge(modelManager, makeConfigStore(), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    await bridge.act('first');
+
+    modelManager.configure({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      apiKey: 'key-2',
+      role: 'primary',
+    });
+
+    await bridge.act('second');
+
+    expect(stagehandMocks.createStagehand).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces action errors', async () => {
