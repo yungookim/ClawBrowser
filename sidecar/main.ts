@@ -10,6 +10,7 @@ import { QmdMemory } from './memory/QmdMemory.js';
 import { Heartbeat } from './cron/Heartbeat.js';
 import { Reflection } from './cron/Reflection.js';
 import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
+import { StagehandBridge } from './dom/StagehandBridge.js';
 import { ConfigStore, type AppConfig, type CommandAllowlistEntry } from './core/ConfigStore.js';
 import { CommandExecutor } from './core/CommandExecutor.js';
 import { ToolRegistry } from './core/ToolRegistry.js';
@@ -66,6 +67,7 @@ let qmdMemory: QmdMemory;
 let heartbeat: Heartbeat;
 let reflection: Reflection;
 let domAutomation: DomAutomation;
+let stagehandBridge: StagehandBridge | undefined;
 let configStore: ConfigStore;
 let appConfig: AppConfig;
 let commandExecutor: CommandExecutor;
@@ -137,6 +139,7 @@ async function boot(): Promise<void> {
   modelManager = new ModelManager();
   configStore = new ConfigStore();
   appConfig = await configStore.load();
+  stagehandBridge = new StagehandBridge(modelManager, configStore);
   commandExecutor = new CommandExecutor();
   try {
     commandExecutor.setAllowlist(appConfig.commandAllowlist);
@@ -148,8 +151,23 @@ async function boot(): Promise<void> {
   if (!agentDispatcher) {
     agentDispatcher = new AgentDispatcher(sendNotification);
   }
-  agentCore = new AgentCore(modelManager, commandExecutor, toolRegistry, agentDispatcher);
-  swarm = new Swarm(modelManager, toolRegistry, agentDispatcher, commandExecutor, sendNotification);
+  agentCore = new AgentCore(
+    modelManager,
+    commandExecutor,
+    toolRegistry,
+    agentDispatcher,
+    stagehandBridge,
+    systemLogger,
+  );
+  swarm = new Swarm(
+    modelManager,
+    toolRegistry,
+    agentDispatcher,
+    commandExecutor,
+    sendNotification,
+    stagehandBridge,
+    systemLogger,
+  );
 
   await configureWorkspace(appConfig.workspacePath);
 
@@ -482,6 +500,28 @@ function registerHandlers(): void {
     return { status: 'ok' };
   });
 
+  handlers.set('browserStatus', async () => {
+    if (!stagehandBridge) {
+      return {
+        active: false,
+        initializing: false,
+        lastUsedAt: null,
+        idleMs: null,
+        lastError: 'Stagehand bridge not initialized',
+        browserPid: null,
+        wsEndpoint: null,
+      };
+    }
+    return stagehandBridge.getStatus();
+  });
+
+  handlers.set('browserClose', async () => {
+    if (stagehandBridge) {
+      await stagehandBridge.close();
+    }
+    return { status: 'ok' };
+  });
+
   handlers.set('agentResult', async (params) => {
     console.error(`[sidecar] agentResult received: reqId=${(params as any)?.requestId} ok=${(params as any)?.ok}`);
     if (!isAgentResult(params)) {
@@ -565,6 +605,7 @@ async function main(): Promise<void> {
     heartbeat.stop();
     reflection.stop();
     qmdMemory.close();
+    void stagehandBridge?.close();
     process.exit(0);
   });
 
@@ -573,6 +614,7 @@ async function main(): Promise<void> {
     heartbeat.stop();
     reflection.stop();
     qmdMemory.close();
+    void stagehandBridge?.close();
     process.exit(0);
   });
 }

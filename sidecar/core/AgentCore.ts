@@ -4,6 +4,8 @@ import type { CommandExecutor } from './CommandExecutor.js';
 import type { ModelRole } from './ModelManager.js';
 import { ToolRegistry, type ParsedToolCall } from './ToolRegistry.js';
 import { AgentDispatcher } from './AgentDispatcher.js';
+import type { StagehandBridge } from '../dom/StagehandBridge.js';
+import type { SystemLogger } from '../logging/SystemLogger.js';
 
 const MAX_HISTORY = 40;
 const MAX_TOOL_RESULT_CHARS = 4_000;
@@ -56,6 +58,8 @@ export class AgentCore {
   private commandExecutor: CommandExecutor | null;
   private toolRegistry: ToolRegistry;
   private dispatcher: AgentDispatcher | null;
+  private stagehandBridge: StagehandBridge | null;
+  private systemLogger: SystemLogger | null;
   private history: BaseMessage[] = [];
 
   constructor(
@@ -63,11 +67,15 @@ export class AgentCore {
     commandExecutor?: CommandExecutor,
     toolRegistry?: ToolRegistry,
     dispatcher?: AgentDispatcher,
+    stagehandBridge?: StagehandBridge,
+    systemLogger?: SystemLogger,
   ) {
     this.modelManager = modelManager;
     this.commandExecutor = commandExecutor || null;
     this.toolRegistry = toolRegistry || new ToolRegistry();
     this.dispatcher = dispatcher || null;
+    this.stagehandBridge = stagehandBridge || null;
+    this.systemLogger = systemLogger || null;
   }
 
   /** Build the system prompt from workspace files and current context. */
@@ -251,6 +259,8 @@ export class AgentCore {
   ): Promise<string> {
     let currentMessages = [...messages];
     let lastContent = '';
+    let stagehandRetryUsed = false;
+    let stagehandDisabled = false;
 
     for (let i = 0; i < AgentCore.MAX_SIMPLE_TOOL_ITERATIONS; i++) {
       const { content } = await this.invokeWithRecovery(model, currentMessages, `invokeWithTools iteration ${i}`);
@@ -261,13 +271,49 @@ export class AgentCore {
         return content;
       }
 
-      const toolResult = await this.executeToolCall(toolCall);
+      const isStagehandCall = toolCall.kind === 'agent' && toolCall.capability === 'stagehand';
+      let toolResult: Awaited<ReturnType<AgentCore['executeToolCall']>>;
+
+      if (isStagehandCall && stagehandDisabled) {
+        const reason = 'Stagehand disabled; use webview tools.';
+        toolResult = { tool: toolCall.tool, ok: false, error: reason };
+      } else {
+        toolResult = await this.executeToolCall(toolCall);
+      }
 
       currentMessages = [
         ...currentMessages,
         new AIMessage(content),
         new HumanMessage(compressForLLM(JSON.stringify(toolResult), MAX_TOOL_RESULT_CHARS)),
       ];
+
+      if (isStagehandCall) {
+        if (stagehandDisabled) {
+          const reason = toolResult.error || 'Stagehand disabled; use webview tools.';
+          this.logStagehandFallback(toolCall.action, stagehandRetryUsed ? 2 : 1, reason, 'webview');
+          currentMessages.push(new HumanMessage(
+            `Stagehand is disabled: ${reason}. Use webview tools (tab.*, nav.*, dom.automation, storage, window, devtools). Do not call browser.* again.`
+          ));
+          continue;
+        }
+
+        if (!toolResult.ok) {
+          const reason = toolResult.error || 'Stagehand action failed.';
+          if (!stagehandRetryUsed) {
+            stagehandRetryUsed = true;
+            this.logStagehandFallback(toolCall.action, 1, reason, 'retry');
+            currentMessages.push(new HumanMessage(
+              `Stagehand failed: ${reason}. Try the same browser.* tool once more.`
+            ));
+          } else {
+            stagehandDisabled = true;
+            this.logStagehandFallback(toolCall.action, 2, reason, 'webview');
+            currentMessages.push(new HumanMessage(
+              `Stagehand failed again: ${reason}. Use webview tools (tab.*, nav.*, dom.automation, storage, window, devtools) for the rest of this request. Do not call browser.* again.`
+            ));
+          }
+        }
+      }
     }
 
     // Max iterations reached — return whatever the LLM last said
@@ -299,6 +345,10 @@ export class AgentCore {
       }
     }
 
+    if (toolCall.kind === 'agent' && toolCall.capability === 'stagehand') {
+      return this.executeStagehandTool(toolCall);
+    }
+
     if (!this.dispatcher) {
       return { tool: toolCall.tool, ok: false, error: 'Agent tool dispatcher unavailable.' };
     }
@@ -319,6 +369,49 @@ export class AgentCore {
     }
   }
 
+  private async executeStagehandTool(toolCall: Extract<ParsedToolCall, { kind: 'agent' }>): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+  }> {
+    if (!this.stagehandBridge) {
+      return { tool: toolCall.tool, ok: false, error: 'Stagehand bridge unavailable.' };
+    }
+
+    try {
+      switch (toolCall.action) {
+        case 'navigate': {
+          const result = await this.stagehandBridge.navigate(String(toolCall.params.url || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'act': {
+          const result = await this.stagehandBridge.act(String(toolCall.params.instruction || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'extract': {
+          const result = await this.stagehandBridge.extract(
+            String(toolCall.params.instruction || ''),
+            toolCall.params.schema,
+          );
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'observe': {
+          const result = await this.stagehandBridge.observe(String(toolCall.params.instruction || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'screenshot': {
+          const result = await this.stagehandBridge.screenshot(toolCall.params.fullPage === true);
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        default:
+          return { tool: toolCall.tool, ok: false, error: `Unknown stagehand action: ${toolCall.action}` };
+      }
+    } catch (err) {
+      return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   private safeJsonParse(content: string): Record<string, unknown> | null {
     const trimmed = content.trim();
     if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
@@ -326,6 +419,32 @@ export class AgentCore {
       return JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
       return null;
+    }
+  }
+
+  private logStagehandFallback(
+    action: string,
+    attempt: number,
+    reason: string,
+    fallback: 'retry' | 'webview',
+  ): void {
+    const payload = {
+      event: 'stagehand_fallback',
+      action,
+      attempt,
+      reason,
+      fallback,
+    };
+    const message = `[StagehandFallback] ${JSON.stringify(payload)}`;
+    try {
+      process.stderr.write(message + '\n');
+    } catch {
+      // Ignore stderr failures.
+    }
+    if (this.systemLogger) {
+      this.systemLogger.log('error', message).catch(() => {
+        // Ignore logging failures.
+      });
     }
   }
 

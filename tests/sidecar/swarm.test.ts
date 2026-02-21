@@ -151,6 +151,28 @@ describe('Swarm', () => {
     expect(() => toolSwarm.cancel()).not.toThrow();
   });
 
+  it('routes stagehand tool calls to StagehandBridge', async () => {
+    const stagehandBridge = {
+      act: vi.fn().mockResolvedValue({ ok: true }),
+      navigate: vi.fn(),
+      extract: vi.fn(),
+      observe: vi.fn(),
+      screenshot: vi.fn(),
+    };
+    const toolSwarm = new Swarm(modelManager as any, undefined, undefined, undefined, undefined, stagehandBridge as any);
+
+    const result = await (toolSwarm as any).executeToolCall({
+      kind: 'agent',
+      tool: 'browser.act',
+      capability: 'stagehand',
+      action: 'act',
+      params: { instruction: 'do the thing' },
+    });
+
+    expect(stagehandBridge.act).toHaveBeenCalledWith('do the thing');
+    expect(result.ok).toBe(true);
+  });
+
   describe('tool-enabled executor', () => {
     it('executes tool calls within a step', async () => {
       const toolRegistry = {

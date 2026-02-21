@@ -4,6 +4,8 @@ import { ModelManager } from './ModelManager.js';
 import type { ToolRegistry, ParsedToolCall } from './ToolRegistry.js';
 import type { AgentDispatcher } from './AgentDispatcher.js';
 import type { CommandExecutor } from './CommandExecutor.js';
+import type { StagehandBridge } from '../dom/StagehandBridge.js';
+import type { SystemLogger } from '../logging/SystemLogger.js';
 
 type Notify = (method: string, params?: Record<string, unknown>) => void;
 
@@ -139,6 +141,8 @@ export class Swarm {
   private dispatcher: AgentDispatcher | null;
   private commandExecutor: CommandExecutor | null;
   private notify: Notify | null;
+  private stagehandBridge: StagehandBridge | null;
+  private systemLogger: SystemLogger | null;
   private aborted = false;
 
   constructor(
@@ -147,12 +151,16 @@ export class Swarm {
     dispatcher?: AgentDispatcher,
     commandExecutor?: CommandExecutor,
     notify?: Notify,
+    stagehandBridge?: StagehandBridge,
+    systemLogger?: SystemLogger,
   ) {
     this.modelManager = modelManager;
     this.toolRegistry = toolRegistry || null;
     this.dispatcher = dispatcher || null;
     this.commandExecutor = commandExecutor || null;
     this.notify = notify || null;
+    this.stagehandBridge = stagehandBridge || null;
+    this.systemLogger = systemLogger || null;
   }
 
   cancel(): void {
@@ -345,6 +353,8 @@ export class Swarm {
     let lastContent = '';
     let consecutiveFailures = 0;
     const stepDeadline = Date.now() + Swarm.STEP_TIMEOUT_MS;
+    let stagehandRetryUsed = false;
+    let stagehandDisabled = false;
 
     try {
       for (let i = 0; i < Swarm.MAX_TOOL_ITERATIONS_PER_STEP; i++) {
@@ -363,7 +373,15 @@ export class Swarm {
           break;
         }
 
-        const toolResult = await this.executeToolCall(toolCall);
+        const isStagehandCall = toolCall.kind === 'agent' && toolCall.capability === 'stagehand';
+        let toolResult: Awaited<ReturnType<Swarm['executeToolCall']>>;
+
+        if (isStagehandCall && stagehandDisabled) {
+          const reason = 'Stagehand disabled; use webview tools.';
+          toolResult = { tool: toolCall.tool, ok: false, error: reason };
+        } else {
+          toolResult = await this.executeToolCall(toolCall);
+        }
 
         if (!toolResult.ok) {
           consecutiveFailures++;
@@ -397,6 +415,31 @@ export class Swarm {
         messages.push(new HumanMessage(
           `Tool result for ${toolResult.tool}: ${toolResult.ok ? 'Success' : 'Error'}\n${resultText}`
         ));
+
+        if (isStagehandCall) {
+          if (stagehandDisabled) {
+            const reason = toolResult.error || 'Stagehand disabled; use webview tools.';
+            this.logStagehandFallback(toolCall.action, stagehandRetryUsed ? 2 : 1, reason, 'webview');
+            messages.push(new HumanMessage(
+              `Stagehand is disabled: ${reason}. Use webview tools (tab.*, nav.*, dom.automation, storage, window, devtools). Do not call browser.* again.`
+            ));
+          } else if (!toolResult.ok) {
+            const reason = toolResult.error || 'Stagehand action failed.';
+            if (!stagehandRetryUsed) {
+              stagehandRetryUsed = true;
+              this.logStagehandFallback(toolCall.action, 1, reason, 'retry');
+              messages.push(new HumanMessage(
+                `Stagehand failed: ${reason}. Try the same browser.* tool once more.`
+              ));
+            } else {
+              stagehandDisabled = true;
+              this.logStagehandFallback(toolCall.action, 2, reason, 'webview');
+              messages.push(new HumanMessage(
+                `Stagehand failed again: ${reason}. Use webview tools (tab.*, nav.*, dom.automation, storage, window, devtools) for the rest of this step. Do not call browser.* again.`
+              ));
+            }
+          }
+        }
 
         this.sendNotification('swarmToolExecuted', {
           stepIndex: state.currentStep,
@@ -658,6 +701,9 @@ export class Swarm {
         return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     }
+    if (toolCall.kind === 'agent' && toolCall.capability === 'stagehand') {
+      return this.executeStagehandTool(toolCall);
+    }
     if (!this.dispatcher) {
       return { tool: toolCall.tool, ok: false, error: 'Agent dispatcher unavailable.' };
     }
@@ -671,6 +717,75 @@ export class Swarm {
       return result.ok
         ? { tool: toolCall.tool, ok: true, data: result.data }
         : { tool: toolCall.tool, ok: false, error: result.error?.message || 'Action failed' };
+    } catch (err) {
+      return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private logStagehandFallback(
+    action: string,
+    attempt: number,
+    reason: string,
+    fallback: 'retry' | 'webview',
+  ): void {
+    const payload = {
+      event: 'stagehand_fallback',
+      action,
+      attempt,
+      reason,
+      fallback,
+    };
+    const message = `[StagehandFallback] ${JSON.stringify(payload)}`;
+    try {
+      process.stderr.write(message + '\n');
+    } catch {
+      // Ignore stderr failures.
+    }
+    if (this.systemLogger) {
+      this.systemLogger.log('error', message).catch(() => {
+        // Ignore logging failures.
+      });
+    }
+  }
+
+  private async executeStagehandTool(toolCall: Extract<ParsedToolCall, { kind: 'agent' }>): Promise<{
+    tool: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+  }> {
+    if (!this.stagehandBridge) {
+      return { tool: toolCall.tool, ok: false, error: 'Stagehand bridge unavailable.' };
+    }
+
+    try {
+      switch (toolCall.action) {
+        case 'navigate': {
+          const result = await this.stagehandBridge.navigate(String(toolCall.params.url || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'act': {
+          const result = await this.stagehandBridge.act(String(toolCall.params.instruction || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'extract': {
+          const result = await this.stagehandBridge.extract(
+            String(toolCall.params.instruction || ''),
+            toolCall.params.schema,
+          );
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'observe': {
+          const result = await this.stagehandBridge.observe(String(toolCall.params.instruction || ''));
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        case 'screenshot': {
+          const result = await this.stagehandBridge.screenshot(toolCall.params.fullPage === true);
+          return { tool: toolCall.tool, ok: true, data: result };
+        }
+        default:
+          return { tool: toolCall.tool, ok: false, error: `Unknown stagehand action: ${toolCall.action}` };
+      }
     } catch (err) {
       return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
     }

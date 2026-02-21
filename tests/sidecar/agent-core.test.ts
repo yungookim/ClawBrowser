@@ -257,6 +257,30 @@ describe('AgentCore', () => {
     expect(response.reply).toBe('Done.');
   });
 
+  it('routes stagehand tool calls to StagehandBridge', async () => {
+    const stagehandBridge = {
+      navigate: vi.fn().mockResolvedValue({ url: 'https://example.com' }),
+      act: vi.fn(),
+      extract: vi.fn(),
+      observe: vi.fn(),
+      screenshot: vi.fn(),
+    };
+
+    modelManager = new ModelManager();
+    agentCore = new AgentCore(modelManager, undefined, undefined, undefined, stagehandBridge as any);
+
+    const result = await (agentCore as any).executeToolCall({
+      kind: 'agent',
+      tool: 'browser.navigate',
+      capability: 'stagehand',
+      action: 'navigate',
+      params: { url: 'https://example.com' },
+    });
+
+    expect(stagehandBridge.navigate).toHaveBeenCalledWith('https://example.com');
+    expect(result.ok).toBe(true);
+  });
+
   it('classifies simple queries as simple complexity', async () => {
     setupMockModel();
 

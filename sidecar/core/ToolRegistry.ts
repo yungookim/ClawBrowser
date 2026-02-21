@@ -41,6 +41,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   { name: 'nav.back', capability: 'nav', action: 'back', description: 'Navigate back in history.', optional: ['tabId'] },
   { name: 'nav.forward', capability: 'nav', action: 'forward', description: 'Navigate forward in history.', optional: ['tabId'] },
   { name: 'nav.reload', capability: 'nav', action: 'reload', description: 'Reload the current page.', optional: ['tabId'] },
+  { name: 'browser.navigate', capability: 'stagehand', action: 'navigate', description: 'Navigate with Stagehand.', required: ['url'] },
+  { name: 'browser.act', capability: 'stagehand', action: 'act', description: 'Perform an action with Stagehand.', required: ['instruction'] },
+  {
+    name: 'browser.extract',
+    capability: 'stagehand',
+    action: 'extract',
+    description: 'Extract data with Stagehand.',
+    required: ['instruction'],
+    optional: ['schema'],
+  },
+  { name: 'browser.observe', capability: 'stagehand', action: 'observe', description: 'Observe the page with Stagehand.', required: ['instruction'] },
+  { name: 'browser.screenshot', capability: 'stagehand', action: 'screenshot', description: 'Capture a screenshot with Stagehand.', optional: ['fullPage'] },
   {
     name: 'dom.automation',
     capability: 'dom',
