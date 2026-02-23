@@ -46,6 +46,16 @@ new SystemLogger({ logsDir: logDir, minLevel: 'debug' });
 
 Log files are auto-pruned after 7 days. If `CLAW_LOG_DIR` is unset, logs fall back to `~/.clawbrowser/workspace/logs/system/`.
 
+## Log Structure
+
+- Log root: `CLAW_LOG_DIR` if set, otherwise `~/.clawbrowser/workspace/logs`.
+- Daily log: `<log root>/YYYY-MM-DD.md` (agent summaries, high-level events).
+- System log: `<log root>/system/YYYY-MM-DD.log` (sidecar/system-level events, Stagehand init, dispatcher timeouts).
+- Browser automation traces: `<log root>/browser-automation/YYYY-MM-DD/<traceId>/`.
+- Trace files: `<trace>/attempt.jsonl` (event stream) and `<trace>/summary.json` (rollup).
+- Trace artifacts: `<trace>/artifacts/screenshot-<attemptId>.png` and `<trace>/artifacts/snapshot-<attemptId>.json`.
+- Analyzer output: `docs/ops/browser-automation-report.md` and baseline `docs/ops/browser-automation-baseline.json`.
+
 ## Logging Conventions
 
 ### Log levels
