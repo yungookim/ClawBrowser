@@ -177,7 +177,6 @@ export class SidecarBridge {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
     agentControl: AgentControlSettings;
-    vaultEncryptionEnabled: boolean;
   }> {
     return this.send('getConfig', {}) as Promise<{
       onboardingComplete: boolean;
@@ -185,7 +184,6 @@ export class SidecarBridge {
       models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
       commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
       agentControl: AgentControlSettings;
-      vaultEncryptionEnabled: boolean;
     }>;
   }
 
@@ -245,6 +243,10 @@ export class SidecarBridge {
       historyLength: number;
       memoryStatus?: { totalDocuments: number; needsEmbedding: number } | null;
     }>;
+  }
+
+  async browserOpen(): Promise<{ status: string }> {
+    return this.send('browserOpen', {}) as Promise<{ status: string }>;
   }
 
   async getMemory(query?: string): Promise<{

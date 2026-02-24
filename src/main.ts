@@ -11,14 +11,18 @@ import { SettingsPanel } from './settings/SettingsPanel';
 import { DebugCapture } from './debug/DebugCapture';
 import { DomAutomationBridge } from './automation/DomAutomationBridge';
 import { SidecarAutomationRouter } from './automation/SidecarAutomationRouter';
-import { Vault } from './vault/Vault';
-import { VaultUI } from './vault/VaultUI';
 import { VaultStore } from './vault/VaultStore';
 import { Wizard, type ModelRole } from './onboarding/Wizard';
 import { providerRequiresApiKey } from './shared/providerDefaults';
 import type { AgentControlSettings } from './agent/types';
 
+const WEBVIEW_AUTOMATION_ENABLED = false;
+
 async function bootstrap(): Promise<void> {
+  if (!WEBVIEW_AUTOMATION_ENABLED) {
+    document.body.classList.add('stagehand-only');
+  }
+
   const tabManager = new TabManager();
   await tabManager.init();
 
@@ -29,14 +33,19 @@ async function bootstrap(): Promise<void> {
   const contentSpacerEl = document.getElementById('content-spacer');
   const appEl = document.getElementById('app');
 
-  if (!tabBarEl || !navBarEl || !agentPanelEl) {
+  if (!navBarEl || !agentPanelEl) {
+    throw new Error('Missing required DOM elements');
+  }
+  if (WEBVIEW_AUTOMATION_ENABLED && !tabBarEl) {
     throw new Error('Missing required DOM elements');
   }
 
   const hasLayout = Boolean(contentColumnEl && contentSpacerEl && appEl);
 
   // Initialize UI components
-  const tabBar = new TabBar(tabBarEl, tabManager);
+  if (WEBVIEW_AUTOMATION_ENABLED && tabBarEl) {
+    new TabBar(tabBarEl, tabManager);
+  }
 
   // Sidecar bridge
   const sidecar = new SidecarBridge();
@@ -46,21 +55,10 @@ async function bootstrap(): Promise<void> {
     console.warn('Sidecar not available yet:', err);
   }
 
-  const vault = new Vault(0);
-  const vaultStore = new VaultStore(vault, true);
-  const vaultUI = new VaultUI(vault);
-  vaultUI.hide();
-  let vaultLocked = false;
-  let vaultRestoreTabId: string | null = null;
+  const vaultStore = new VaultStore();
   let onboardingActive = false;
   let onboardingRestoreTabId: string | null = null;
   let settingsPanel: SettingsPanel | null = null;
-  let vaultEncryptionEnabled = true;
-  const setTabsLocked = (locked: boolean) => {
-    if (typeof (tabBar as { setLocked?: (state: boolean) => void }).setLocked === 'function') {
-      tabBar.setLocked(locked);
-    }
-  };
 
   const configureModelsFromVault = async (config: {
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
@@ -97,69 +95,20 @@ async function bootstrap(): Promise<void> {
     }
   };
 
-  const enterVaultLockedState = () => {
-    vaultLocked = true;
-    vaultRestoreTabId = tabManager.getActiveTabId() || tabManager.getTabs()[0]?.id || null;
-    setTabsLocked(true);
-    invoke('hide_all_tabs').catch((err) => {
-      console.warn('Failed to hide tabs for vault lock:', err);
-    });
-  };
-
-  const restoreVaultTabs = async () => {
-    vaultLocked = false;
-    setTabsLocked(false);
-    if (settingsPanel?.isVisible()) {
-      await invoke('hide_all_tabs');
-      vaultRestoreTabId = null;
+  const restoreContentTabs = async () => {
+    if (!WEBVIEW_AUTOMATION_ENABLED) {
+      onboardingRestoreTabId = null;
       return;
     }
-    const tabs = tabManager.getTabs();
-    const tabIds = new Set(tabs.map((tab) => tab.id));
-    const preferredId = vaultRestoreTabId && tabIds.has(vaultRestoreTabId)
-      ? vaultRestoreTabId
-      : tabManager.getActiveTabId();
-    const fallbackId = tabs[0]?.id;
-    const targetId = (preferredId && tabIds.has(preferredId)) ? preferredId : fallbackId;
-
-    if (targetId) {
-      await tabManager.switchTab(targetId);
-    } else {
-      await tabManager.createTab('about:blank');
-    }
-    vaultRestoreTabId = null;
-  };
-
-  if (typeof vault.onLock === 'function') {
-    vault.onLock(() => {
-      enterVaultLockedState();
-    });
-  }
-
-  const setVaultUnlockHandler = (config: {
-    models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
-  }) => {
-    vaultUI.setOnUnlock(() => {
-      configureModelsFromVault(config).catch((err) => {
-        console.warn('Failed to configure models from vault:', err);
-      });
-      restoreVaultTabs().catch((err) => {
-        console.warn('Failed to restore tabs after vault unlock:', err);
-      });
-    });
-  };
-
-  const restoreContentTabs = async () => {
     try {
       if (settingsPanel?.isVisible()) {
-      if (tabManager.getTabs().length === 0) {
-        await tabManager.createTab('about:blank');
+        if (tabManager.getTabs().length === 0) {
+          await tabManager.createTab('about:blank');
+        }
+        await invoke('hide_all_tabs');
+        onboardingRestoreTabId = null;
+        return;
       }
-      await invoke('hide_all_tabs');
-      onboardingRestoreTabId = null;
-      setTabsLocked(false);
-      return;
-    }
 
       const tabs = tabManager.getTabs();
       const tabIds = new Set(tabs.map((tab) => tab.id));
@@ -186,24 +135,14 @@ async function bootstrap(): Promise<void> {
       return;
     }
     onboardingActive = true;
-    vaultUI.setMissingVaultData(false);
-    onboardingRestoreTabId = tabManager.getActiveTabId();
-    invoke('hide_all_tabs').catch((err) => {
-      console.warn('Failed to hide tabs for onboarding:', err);
-    });
-
-    const useEncryptedVault = vaultEncryptionEnabled;
-    let existingVaultData: string | null = null;
-    if (useEncryptedVault && !freshVault) {
-      try {
-        const { data } = await sidecar.loadVault();
-        existingVaultData = data || null;
-      } catch (err) {
-        console.warn('Failed to load vault data for setup wizard:', err);
-      }
+    onboardingRestoreTabId = WEBVIEW_AUTOMATION_ENABLED ? tabManager.getActiveTabId() : null;
+    if (WEBVIEW_AUTOMATION_ENABLED) {
+      invoke('hide_all_tabs').catch((err) => {
+        console.warn('Failed to hide tabs for onboarding:', err);
+      });
     }
 
-    const wizard = new Wizard(vaultStore, existingVaultData, useEncryptedVault);
+    const wizard = new Wizard(vaultStore);
     wizard.setOnComplete(async (result) => {
       try {
         const modelsPayload: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }> = {};
@@ -223,27 +162,13 @@ async function bootstrap(): Promise<void> {
           workspacePath: result.workspacePath,
           models: modelsPayload,
           agentControl: result.agentControl,
-          vaultEncryptionEnabled: useEncryptedVault,
         });
 
-        const vaultPayload = useEncryptedVault
-          ? await vaultStore.exportEncrypted()
-          : await vaultStore.exportPlaintext();
+        const vaultPayload = await vaultStore.exportPlaintext();
         await sidecar.saveVault(vaultPayload);
-        if (useEncryptedVault) {
-          vaultUI.setEncryptedData(vaultPayload);
-        }
-        vaultUI.setMissingVaultData(false);
 
         try {
           appConfig = await sidecar.getConfig();
-          if (appConfig) {
-            vaultEncryptionEnabled = appConfig.vaultEncryptionEnabled !== false;
-            vaultStore.setEncryptionEnabled(vaultEncryptionEnabled);
-            if (vaultEncryptionEnabled) {
-              setVaultUnlockHandler(appConfig);
-            }
-          }
         } catch (err) {
           console.warn('Failed to refresh config after onboarding:', err);
         }
@@ -268,24 +193,12 @@ async function bootstrap(): Promise<void> {
     wizard.show();
   };
 
-  vaultUI.setOnRecover(() => {
-    const shouldRestart = window.confirm(
-      'Restart the setup wizard and create a new vault? This will overwrite your existing vault data.'
-    );
-    if (!shouldRestart) return;
-    vaultUI.hide();
-    startSetupWizard({ freshVault: true }).catch((err) => {
-      console.warn('Failed to start setup wizard:', err);
-    });
-  });
-
   let appConfig: {
     onboardingComplete: boolean;
     workspacePath: string | null;
     models: Record<string, { provider: string; model: string; baseUrl?: string; temperature?: number }>;
     commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
     agentControl: AgentControlSettings;
-    vaultEncryptionEnabled: boolean;
   } | null = null;
 
   try {
@@ -293,107 +206,93 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     console.warn('Failed to load config:', err);
   }
-  if (appConfig) {
-    vaultEncryptionEnabled = appConfig.vaultEncryptionEnabled !== false;
-    vaultStore.setEncryptionEnabled(vaultEncryptionEnabled);
-  }
 
   if (appConfig && !appConfig.onboardingComplete) {
     await startSetupWizard({ freshVault: false });
   } else if (appConfig) {
-    if (vaultEncryptionEnabled) {
-      try {
-        const { data } = await sidecar.loadVault();
-        if (data) {
-          vaultUI.setEncryptedData(data);
-          vaultStore.setEncryptedData(data);
-          vaultUI.setMissingVaultData(false);
-        } else {
-          vaultUI.setMissingVaultData(true);
-        }
-      } catch (err) {
-        console.warn('Failed to load vault data:', err);
-        vaultUI.setMissingVaultData(true);
-      }
-      setVaultUnlockHandler(appConfig);
-      enterVaultLockedState();
-      vaultUI.show();
-    } else {
-      try {
-        const { data } = await sidecar.loadVault();
-        await vaultStore.importPlaintext(data);
-      } catch (err) {
-        console.warn('Failed to load plaintext vault data:', err);
-      }
-      vaultLocked = false;
-      setTabsLocked(false);
-      configureModelsFromVault(appConfig).catch((err) => {
-        console.warn('Failed to configure models from plaintext vault:', err);
-      });
+    try {
+      const { data } = await sidecar.loadVault();
+      await vaultStore.importPlaintext(data);
+    } catch (err) {
+      console.warn('Failed to load vault data:', err);
     }
+    configureModelsFromVault(appConfig).catch((err) => {
+      console.warn('Failed to configure models from vault:', err);
+    });
   }
 
-  const debugEnabled = import.meta.env.DEV || localStorage.getItem('claw:debug') === '1';
-  const debugCapture = new DebugCapture(sidecar, tabManager, debugEnabled);
-  debugCapture.start().catch(() => {
-    // Ignore debug capture failures.
-  });
+  let domAutomation: DomAutomationBridge | null = null;
+  if (WEBVIEW_AUTOMATION_ENABLED) {
+    const debugEnabled = import.meta.env.DEV || localStorage.getItem('claw:debug') === '1';
+    const debugCapture = new DebugCapture(sidecar, tabManager, debugEnabled);
+    debugCapture.start().catch(() => {
+      // Ignore debug capture failures.
+    });
 
-  const domAutomation = new DomAutomationBridge(tabManager);
-  await domAutomation.start();
-  const domAutomationRouter = new SidecarAutomationRouter(sidecar, domAutomation);
-  domAutomationRouter.start();
-  const agentCapabilityRouter = new AgentCapabilityRouter(sidecar, tabManager, { domAutomation });
+    domAutomation = new DomAutomationBridge(tabManager);
+    await domAutomation.start();
+    const domAutomationRouter = new SidecarAutomationRouter(sidecar, domAutomation);
+    domAutomationRouter.start();
+  }
+
+  const agentCapabilityRouter = new AgentCapabilityRouter(sidecar, tabManager, {
+    domAutomation: domAutomation || undefined,
+    webviewEnabled: WEBVIEW_AUTOMATION_ENABLED,
+  });
   agentCapabilityRouter.start();
 
-  let ensuringBlankTab = false;
-  const ensureBlankTab = (tabs: Tab[]) => {
-    if (ensuringBlankTab) return;
-    if (tabs.length > 0) return;
-    if (onboardingActive || vaultLocked) return;
-    if (settingsPanel?.isVisible()) return;
-    ensuringBlankTab = true;
-    tabManager.createTab('about:blank').catch((err) => {
-      console.error('Failed to recreate blank tab:', err);
-    }).finally(() => {
-      ensuringBlankTab = false;
-    });
-  };
-
-  tabManager.onChange((tabs, activeId) => {
-    ensureBlankTab(tabs);
-    const active = tabs.find((tab) => tab.id === activeId);
-    sidecar.tabUpdate(tabs.length, active?.title || '').catch(() => {
+  if (!WEBVIEW_AUTOMATION_ENABLED) {
+    sidecar.tabUpdate(0, '').catch(() => {
       // Sidecar might be offline; ignore.
     });
-  });
+  }
 
-  await listen('close-active-tab', () => {
-    const activeId = tabManager.getActiveTabId();
-    if (!activeId) return;
-    tabManager.closeTab(activeId).catch((err) => {
-      console.error('Failed to close tab:', err);
-    });
-  });
+  if (WEBVIEW_AUTOMATION_ENABLED) {
+    let ensuringBlankTab = false;
+    const ensureBlankTab = (tabs: Tab[]) => {
+      if (ensuringBlankTab) return;
+      if (tabs.length > 0) return;
+      if (onboardingActive) return;
+      if (settingsPanel?.isVisible()) return;
+      ensuringBlankTab = true;
+      tabManager.createTab('about:blank').catch((err) => {
+        console.error('Failed to recreate blank tab:', err);
+      }).finally(() => {
+        ensuringBlankTab = false;
+      });
+    };
 
-  await listen<{ tabId: string; url?: string; reason?: string }>('tab-open-request', (event) => {
-    if (onboardingActive) {
-      console.warn('Tab open request ignored during onboarding.');
-      return;
-    }
-    if (vaultLocked) {
-      console.warn('Tab open request ignored while vault locked.');
-      return;
-    }
-    const { url, reason } = event.payload || {};
-    if (!url) {
-      console.warn('Tab open request missing URL');
-      return;
-    }
-    tabManager.createTab(url).catch((err) => {
-      console.error(`Failed to open new tab (${reason || 'request'}):`, err);
+    tabManager.onChange((tabs, activeId) => {
+      ensureBlankTab(tabs);
+      const active = tabs.find((tab) => tab.id === activeId);
+      sidecar.tabUpdate(tabs.length, active?.title || '').catch(() => {
+        // Sidecar might be offline; ignore.
+      });
     });
-  });
+
+    await listen('close-active-tab', () => {
+      const activeId = tabManager.getActiveTabId();
+      if (!activeId) return;
+      tabManager.closeTab(activeId).catch((err) => {
+        console.error('Failed to close tab:', err);
+      });
+    });
+
+    await listen<{ tabId: string; url?: string; reason?: string }>('tab-open-request', (event) => {
+      if (onboardingActive) {
+        console.warn('Tab open request ignored during onboarding.');
+        return;
+      }
+      const { url, reason } = event.payload || {};
+      if (!url) {
+        console.warn('Tab open request missing URL');
+        return;
+      }
+      tabManager.createTab(url).catch((err) => {
+        console.error(`Failed to open new tab (${reason || 'request'}):`, err);
+      });
+    });
+  }
 
   // Agent panel
   new AgentPanel(agentPanelEl, sidecar, tabManager);
@@ -403,13 +302,16 @@ async function bootstrap(): Promise<void> {
       startSetupWizard({ freshVault: true }).catch((err) => {
         console.warn('Failed to start setup wizard:', err);
       });
-    }, (enabled) => {
-      vaultEncryptionEnabled = enabled;
-      vaultStore.setEncryptionEnabled(enabled);
     })
     : null;
   const navBar = new NavBar(navBarEl, tabManager, {
     onSettingsToggle: () => settingsPanel?.toggle(),
+    onOpenSession: () => {
+      sidecar.browserOpen().catch((err) => {
+        console.error('Failed to open browser session:', err);
+      });
+    },
+    showNavigation: WEBVIEW_AUTOMATION_ENABLED,
   });
   if (settingsPanel) {
     settingsPanel.setOnVisibilityChange((visible) => {
@@ -428,7 +330,7 @@ async function bootstrap(): Promise<void> {
 
       if (key === 't' && !event.shiftKey) {
         event.preventDefault();
-        if (onboardingActive || vaultLocked) {
+        if (onboardingActive) {
           return;
         }
         tabManager.createTab('about:blank').catch((err) => {
@@ -444,7 +346,9 @@ async function bootstrap(): Promise<void> {
     });
   };
 
-  registerShortcuts();
+  if (WEBVIEW_AUTOMATION_ENABLED) {
+    registerShortcuts();
+  }
 
   // Voice input (appended to nav bar)
   const voiceInput = new VoiceInput(navBarEl);
@@ -455,57 +359,58 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  const getCssPx = (name: string): number => {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
+  if (WEBVIEW_AUTOMATION_ENABLED) {
+    const getCssPx = (name: string): number => {
+      const value = getComputedStyle(document.documentElement).getPropertyValue(name);
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
 
-  const syncContentBounds = async () => {
-    if (!hasLayout || !contentColumnEl || !appEl) {
-      return;
-    }
-    // Skip repositioning webviews while the settings panel is visible --
-    // webviews are hidden/off-screen and should stay that way.
-    if (settingsPanel?.isVisible()) {
-      return;
-    }
-    const appRect = appEl.getBoundingClientRect();
-    const columnRect = contentColumnEl.getBoundingClientRect();
-    const navRect = navBarEl.getBoundingClientRect();
-    if (columnRect.width <= 1) {
-      console.warn('[BOUNDS-JS] syncContentBounds SKIPPED: columnRect.width <= 1');
-      return;
-    }
+    const syncContentBounds = async () => {
+      if (!hasLayout || !contentColumnEl || !appEl) {
+        return;
+      }
+      // Skip repositioning webviews while the settings panel is visible --
+      // webviews are hidden/off-screen and should stay that way.
+      if (settingsPanel?.isVisible()) {
+        return;
+      }
+      const appRect = appEl.getBoundingClientRect();
+      const columnRect = contentColumnEl.getBoundingClientRect();
+      const navRect = navBarEl.getBoundingClientRect();
+      if (columnRect.width <= 1) {
+        console.warn('[BOUNDS-JS] syncContentBounds SKIPPED: columnRect.width <= 1');
+        return;
+      }
 
-    const cssAgentWidth = getCssPx('--agent-width');
-    const cssTabsWidth = getCssPx('--tabs-width');
-    const cssNavHeight = getCssPx('--nav-height');
+      const cssAgentWidth = getCssPx('--agent-width');
+      const cssTabsWidth = getCssPx('--tabs-width');
+      const cssNavHeight = getCssPx('--nav-height');
 
-    const columnOffsetLeft = columnRect.left - appRect.left;
-    const columnOffsetTop = columnRect.top - appRect.top;
+      const columnOffsetLeft = columnRect.left - appRect.left;
+      const columnOffsetTop = columnRect.top - appRect.top;
 
-    let left = columnOffsetLeft;
-    const cssLeft = cssAgentWidth + cssTabsWidth;
-    if (cssLeft > 1 && left < cssLeft * 0.5) {
-      left = cssLeft;
-    }
+      let left = columnOffsetLeft;
+      const cssLeft = cssAgentWidth + cssTabsWidth;
+      if (cssLeft > 1 && left < cssLeft * 0.5) {
+        left = cssLeft;
+      }
 
-    let navHeight = cssNavHeight;
-    if (navHeight <= 1) {
-      navHeight = navRect.height;
-    }
-    if (navHeight <= 1) {
-      console.warn('[BOUNDS-JS] syncContentBounds SKIPPED: navHeight <= 1');
-      return;
-    }
+      let navHeight = cssNavHeight;
+      if (navHeight <= 1) {
+        navHeight = navRect.height;
+      }
+      if (navHeight <= 1) {
+        console.warn('[BOUNDS-JS] syncContentBounds SKIPPED: navHeight <= 1');
+        return;
+      }
 
-    const top = columnOffsetTop + navHeight;
-    const width = columnRect.width;
-    const height = Math.max(0, columnRect.height - navHeight);
+      const top = columnOffsetTop + navHeight;
+      const width = columnRect.width;
+      const height = Math.max(0, columnRect.height - navHeight);
 
-    const dpr = window.devicePixelRatio || 1;
-    console.log(`[BOUNDS-JS] syncContentBounds:
+      const dpr = window.devicePixelRatio || 1;
+      console.log(`[BOUNDS-JS] syncContentBounds:
   appRect: top=${appRect.top} left=${appRect.left} w=${appRect.width} h=${appRect.height}
   columnRect: top=${columnRect.top} left=${columnRect.left} w=${columnRect.width} h=${columnRect.height}
   navRect: top=${navRect.top} left=${navRect.left} w=${navRect.width} h=${navRect.height} bottom=${navRect.bottom}
@@ -516,47 +421,48 @@ async function bootstrap(): Promise<void> {
   window.innerWidth=${window.innerWidth} window.innerHeight=${window.innerHeight}
   navRect.bottom - appRect.top = ${navRect.bottom - appRect.top}`);
 
-    await invoke('set_content_bounds', {
-      bounds: { left, top, width, height },
-    });
-  };
+      await invoke('set_content_bounds', {
+        bounds: { left, top, width, height },
+      });
+    };
 
-  let pendingBounds = false;
-  const scheduleSync = () => {
-    if (pendingBounds) return;
-    pendingBounds = true;
-    requestAnimationFrame(() => {
-      pendingBounds = false;
-      syncContentBounds().catch((err) => {
+    let pendingBounds = false;
+    const scheduleSync = () => {
+      if (pendingBounds) return;
+      pendingBounds = true;
+      requestAnimationFrame(() => {
+        pendingBounds = false;
+        syncContentBounds().catch((err) => {
+          console.error('Reposition failed:', err);
+        });
+      });
+    };
+
+    if (hasLayout && contentColumnEl && appEl) {
+      const resizeObserver = new ResizeObserver(() => scheduleSync());
+      resizeObserver.observe(appEl);
+      resizeObserver.observe(contentColumnEl);
+      resizeObserver.observe(navBarEl);
+
+      window.addEventListener('load', () => scheduleSync(), { once: true });
+      scheduleSync();
+    }
+
+    // Window resize: reposition content webviews
+    await listen('tauri://resize', () => {
+      if (hasLayout) {
+        scheduleSync();
+        return;
+      }
+      invoke('reposition_tabs').catch((err) => {
         console.error('Reposition failed:', err);
       });
     });
-  };
 
-  if (hasLayout && contentColumnEl && appEl) {
-    const resizeObserver = new ResizeObserver(() => scheduleSync());
-    resizeObserver.observe(appEl);
-    resizeObserver.observe(contentColumnEl);
-    resizeObserver.observe(navBarEl);
-
-    window.addEventListener('load', () => scheduleSync(), { once: true });
-    scheduleSync();
-  }
-
-  // Window resize: reposition content webviews
-  await listen('tauri://resize', () => {
-    if (hasLayout) {
-      scheduleSync();
-      return;
+    // Create initial tab
+    if (!onboardingActive && tabManager.getTabs().length === 0) {
+      await tabManager.createTab('about:blank');
     }
-    invoke('reposition_tabs').catch((err) => {
-      console.error('Reposition failed:', err);
-    });
-  });
-
-  // Create initial tab
-  if (!onboardingActive && !vaultLocked && tabManager.getTabs().length === 0) {
-    await tabManager.createTab('about:blank');
   }
 
   console.log('ClawBrowser chrome initialized');

@@ -19,6 +19,8 @@ import { CommandExecutor } from './core/CommandExecutor.js';
 import { ToolRegistry } from './core/ToolRegistry.js';
 import { AgentDispatcher, type AgentResult } from './core/AgentDispatcher.js';
 
+const WEBVIEW_AUTOMATION_ENABLED = false;
+
 // JSON-RPC 2.0 types
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -69,7 +71,7 @@ let systemLogger: SystemLogger;
 let qmdMemory: QmdMemory;
 let heartbeat: Heartbeat;
 let reflection: Reflection;
-let domAutomation: DomAutomation;
+let domAutomation: DomAutomation | null = null;
 let stagehandBridge: StagehandBridge | undefined;
 let browserAutomationRouter: BrowserAutomationRouter | undefined;
 let configStore: ConfigStore;
@@ -157,7 +159,9 @@ async function boot(): Promise<void> {
   }
   if (!browserAutomationRouter) {
     const stagehandProvider = new StagehandProvider(stagehandBridge);
-    const webviewProvider = new WebviewProvider(agentDispatcher, domAutomation, modelManager, systemLogger);
+    const webviewProvider = WEBVIEW_AUTOMATION_ENABLED
+      ? new WebviewProvider(agentDispatcher, domAutomation, modelManager, systemLogger)
+      : null;
     browserAutomationRouter = new BrowserAutomationRouter({
       stagehandProvider,
       webviewProvider,
@@ -265,7 +269,7 @@ function validateAllowlist(entries: CommandAllowlistEntry[]): void {
 
 /** Register all JSON-RPC method handlers. */
 function registerHandlers(): void {
-  if (!domAutomation) {
+  if (WEBVIEW_AUTOMATION_ENABLED && !domAutomation) {
     domAutomation = new DomAutomation(sendNotification);
   }
   if (!agentDispatcher) {
@@ -496,6 +500,9 @@ function registerHandlers(): void {
   });
 
   handlers.set('domAutomation', async (params) => {
+    if (!WEBVIEW_AUTOMATION_ENABLED || !domAutomation) {
+      throw new Error('Webview automation disabled (Stagehand-only mode).');
+    }
     return domAutomation.request(params as {
       requestId?: string;
       tabId?: string;
@@ -506,6 +513,10 @@ function registerHandlers(): void {
   });
 
   handlers.set('domAutomationResult', async (params) => {
+    if (!WEBVIEW_AUTOMATION_ENABLED || !domAutomation) {
+      console.error('[sidecar] domAutomationResult ignored: webview automation disabled');
+      return { status: 'ignored' };
+    }
     console.error(`[sidecar] domAutomationResult received: reqId=${(params as any)?.requestId} ok=${(params as any)?.ok}`);
     if (!isDomAutomationResult(params)) {
       console.error('[sidecar] Invalid domAutomationResult payload:', JSON.stringify(params).slice(0, 500));
@@ -528,6 +539,14 @@ function registerHandlers(): void {
       };
     }
     return stagehandBridge.getStatus();
+  });
+
+  handlers.set('browserOpen', async () => {
+    if (!stagehandBridge) {
+      throw new Error('Stagehand bridge not initialized');
+    }
+    await stagehandBridge.openSession();
+    return { status: 'ok' };
   });
 
   handlers.set('browserClose', async () => {
