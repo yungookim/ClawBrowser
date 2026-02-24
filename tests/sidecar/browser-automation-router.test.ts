@@ -37,12 +37,8 @@ describe('BrowserAutomationRouter', () => {
       execute: vi.fn().mockResolvedValue({ ok: true }),
       captureScreenshot: vi.fn().mockResolvedValue(makeScreenshot()),
     };
-    const webviewProvider: BrowserAutomationProvider = {
-      name: 'webview',
-      execute: vi.fn(),
-    };
 
-    const router = new BrowserAutomationRouter({ stagehandProvider, webviewProvider });
+    const router = new BrowserAutomationRouter({ stagehandProvider });
     const traceId = createBrowserAutomationTraceId();
     const result = await router.execute({
       kind: 'agent',
@@ -54,8 +50,6 @@ describe('BrowserAutomationRouter', () => {
 
     expect(result.ok).toBe(true);
     expect(stagehandProvider.execute).toHaveBeenCalledTimes(1);
-    expect(webviewProvider.execute).not.toHaveBeenCalled();
-
     const date = new Date().toISOString().slice(0, 10);
     const traceDir = path.join(logDir, 'browser-automation', date, traceId);
     const attemptLog = await fs.readFile(path.join(traceDir, 'attempt.jsonl'), 'utf-8');
@@ -71,12 +65,8 @@ describe('BrowserAutomationRouter', () => {
       execute: vi.fn().mockRejectedValue(new Error('boom')),
       captureScreenshot: vi.fn().mockResolvedValue(makeScreenshot()),
     };
-    const webviewProvider: BrowserAutomationProvider = {
-      name: 'webview',
-      execute: vi.fn(),
-    };
 
-    const router = new BrowserAutomationRouter({ stagehandProvider, webviewProvider });
+    const router = new BrowserAutomationRouter({ stagehandProvider });
     const traceId = createBrowserAutomationTraceId();
 
     const result = await router.execute({
@@ -89,22 +79,16 @@ describe('BrowserAutomationRouter', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Retry the same browser.* tool once more');
-    expect(webviewProvider.execute).not.toHaveBeenCalled();
   });
 
-  it('falls back to webview after a second stagehand failure', async () => {
+  it('returns a disabled error after a second stagehand failure when webview is unavailable', async () => {
     const stagehandProvider: BrowserAutomationProvider = {
       name: 'stagehand',
       execute: vi.fn().mockRejectedValue(new Error('boom')),
       captureScreenshot: vi.fn().mockResolvedValue(makeScreenshot()),
     };
-    const webviewProvider: BrowserAutomationProvider = {
-      name: 'webview',
-      execute: vi.fn().mockResolvedValue({ ok: true, data: 'fallback' }),
-      captureScreenshot: vi.fn().mockResolvedValue(makeScreenshot()),
-    };
 
-    const router = new BrowserAutomationRouter({ stagehandProvider, webviewProvider });
+    const router = new BrowserAutomationRouter({ stagehandProvider });
     const traceId = createBrowserAutomationTraceId();
 
     const first = await router.execute({
@@ -125,8 +109,8 @@ describe('BrowserAutomationRouter', () => {
       params: { instruction: 'click' },
     }, { traceId });
 
-    expect(second.ok).toBe(true);
-    expect(webviewProvider.execute).toHaveBeenCalled();
+    expect(second.ok).toBe(false);
+    expect(second.error).toContain('Webview automation disabled');
 
     const third = await router.execute({
       kind: 'agent',
@@ -136,7 +120,8 @@ describe('BrowserAutomationRouter', () => {
       params: { instruction: 'click' },
     }, { traceId });
 
-    expect(third.ok).toBe(true);
+    expect(third.ok).toBe(false);
+    expect(third.error).toContain('Webview automation disabled');
     expect(stagehandProvider.execute).toHaveBeenCalledTimes(2);
   });
 
@@ -144,25 +129,13 @@ describe('BrowserAutomationRouter', () => {
     const stagehandProvider: BrowserAutomationProvider = {
       name: 'stagehand',
       execute: vi.fn().mockRejectedValue(new Error('boom')),
-    };
-    const webviewProvider: BrowserAutomationProvider = {
-      name: 'webview',
-      execute: vi.fn().mockRejectedValue(new Error('webview failed')),
       captureSnapshot: vi.fn().mockResolvedValue({
         minimalDom: [{ value: 'secret', href: 'https://example.com?a=1&b=2' }],
       }),
     };
 
-    const router = new BrowserAutomationRouter({ stagehandProvider, webviewProvider });
+    const router = new BrowserAutomationRouter({ stagehandProvider });
     const traceId = createBrowserAutomationTraceId();
-
-    await router.execute({
-      kind: 'agent',
-      tool: 'browser.act',
-      capability: 'stagehand',
-      action: 'act',
-      params: { instruction: 'click' },
-    }, { traceId });
 
     await router.execute({
       kind: 'agent',

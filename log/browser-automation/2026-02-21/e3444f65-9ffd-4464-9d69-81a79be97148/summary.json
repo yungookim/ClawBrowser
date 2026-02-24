@@ -1,0 +1,25 @@
+{
+  "traceId": "e3444f65-9ffd-4464-9d69-81a79be97148",
+  "attempts": 8,
+  "successes": 5,
+  "failures": 3,
+  "providers": {
+    "stagehand": {
+      "attempts": 7,
+      "successes": 5,
+      "failures": 2
+    },
+    "webview": {
+      "attempts": 1,
+      "successes": 0,
+      "failures": 1
+    }
+  },
+  "updatedAt": "2026-02-21T21:19:28.543Z",
+  "lastOutcome": {
+    "provider": "stagehand",
+    "ok": true,
+    "action": "act",
+    "attemptId": "attempt-8"
+  }
+}

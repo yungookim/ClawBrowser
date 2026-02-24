@@ -7,12 +7,14 @@ import type { DomAutomationRequest } from '../automation/domTypes';
 
 type RouterOptions = {
   domAutomation?: DomAutomationBridge;
+  webviewEnabled?: boolean;
 };
 
 export class AgentCapabilityRouter {
   private sidecar: SidecarBridge;
   private tabManager: TabManager;
   private domAutomation?: DomAutomationBridge;
+  private webviewEnabled: boolean;
   private started = false;
   private cachedConfig: AgentControlSettings = DEFAULT_AGENT_CONTROL;
   private lastConfigAt = 0;
@@ -22,6 +24,7 @@ export class AgentCapabilityRouter {
     this.sidecar = sidecar;
     this.tabManager = tabManager;
     this.domAutomation = options.domAutomation;
+    this.webviewEnabled = options.webviewEnabled !== undefined ? options.webviewEnabled : true;
   }
 
   start(): void {
@@ -92,6 +95,10 @@ export class AgentCapabilityRouter {
 
   private async executeRequest(request: AgentRequest): Promise<unknown> {
     const params = request.params || {};
+
+    if (!this.webviewEnabled && (request.capability === 'tab' || request.capability === 'nav' || request.capability === 'dom')) {
+      throw new Error('Webview automation disabled (Stagehand-only mode).');
+    }
 
     switch (request.capability) {
       case 'tab':

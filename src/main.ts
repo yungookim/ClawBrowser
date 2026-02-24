@@ -14,6 +14,7 @@ import { SidecarAutomationRouter } from './automation/SidecarAutomationRouter';
 import { VaultStore } from './vault/VaultStore';
 import { Wizard, type ModelRole } from './onboarding/Wizard';
 import { providerRequiresApiKey } from './shared/providerDefaults';
+import { MatrixBackground } from './ui/MatrixBackground';
 import type { AgentControlSettings } from './agent/types';
 
 const WEBVIEW_AUTOMATION_ENABLED = false;
@@ -40,7 +41,7 @@ async function bootstrap(): Promise<void> {
     throw new Error('Missing required DOM elements');
   }
 
-  const hasLayout = Boolean(contentColumnEl && contentSpacerEl && appEl);
+  const hasWebviewLayout = Boolean(contentColumnEl && contentSpacerEl && appEl);
 
   // Initialize UI components
   if (WEBVIEW_AUTOMATION_ENABLED && tabBarEl) {
@@ -296,14 +297,19 @@ async function bootstrap(): Promise<void> {
 
   // Agent panel
   new AgentPanel(agentPanelEl, sidecar, tabManager);
+  const matrixBackground = new MatrixBackground(agentPanelEl, {
+    watermark: {
+      lines: ['CLAWBROWSER', 'THE SMARTEST CHILD OF OPENCLAW.'],
+      opacity: 0.08,
+    },
+  });
+  matrixBackground.start();
 
-  settingsPanel = hasLayout && contentSpacerEl
-    ? new SettingsPanel(contentSpacerEl, sidecar, tabManager, vaultStore, () => {
-      startSetupWizard({ freshVault: true }).catch((err) => {
-        console.warn('Failed to start setup wizard:', err);
-      });
-    })
-    : null;
+  settingsPanel = new SettingsPanel(document.body, sidecar, tabManager, vaultStore, () => {
+    startSetupWizard({ freshVault: true }).catch((err) => {
+      console.warn('Failed to start setup wizard:', err);
+    });
+  });
   const navBar = new NavBar(navBarEl, tabManager, {
     onSettingsToggle: () => settingsPanel?.toggle(),
     onOpenSession: () => {
@@ -367,7 +373,7 @@ async function bootstrap(): Promise<void> {
     };
 
     const syncContentBounds = async () => {
-      if (!hasLayout || !contentColumnEl || !appEl) {
+      if (!hasWebviewLayout || !contentColumnEl || !appEl) {
         return;
       }
       // Skip repositioning webviews while the settings panel is visible --
@@ -438,7 +444,7 @@ async function bootstrap(): Promise<void> {
       });
     };
 
-    if (hasLayout && contentColumnEl && appEl) {
+    if (hasWebviewLayout && contentColumnEl && appEl) {
       const resizeObserver = new ResizeObserver(() => scheduleSync());
       resizeObserver.observe(appEl);
       resizeObserver.observe(contentColumnEl);
@@ -450,7 +456,7 @@ async function bootstrap(): Promise<void> {
 
     // Window resize: reposition content webviews
     await listen('tauri://resize', () => {
-      if (hasLayout) {
+      if (hasWebviewLayout) {
         scheduleSync();
         return;
       }

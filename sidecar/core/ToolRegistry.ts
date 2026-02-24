@@ -32,15 +32,6 @@ export type ParsedToolCall =
     };
 
 const TOOL_DEFINITIONS: ToolDefinition[] = [
-  { name: 'tab.create', capability: 'tab', action: 'create', description: 'Open a new tab.', optional: ['url'] },
-  { name: 'tab.close', capability: 'tab', action: 'close', description: 'Close a tab by id.', required: ['tabId'] },
-  { name: 'tab.switch', capability: 'tab', action: 'switch', description: 'Switch to a tab by id.', required: ['tabId'] },
-  { name: 'tab.navigate', capability: 'tab', action: 'navigate', description: 'Navigate a tab to a URL.', required: ['url'], optional: ['tabId'] },
-  { name: 'tab.list', capability: 'tab', action: 'list', description: 'List all open tabs.' },
-  { name: 'tab.getActive', capability: 'tab', action: 'getActive', description: 'Get the active tab.' },
-  { name: 'nav.back', capability: 'nav', action: 'back', description: 'Navigate back in history.', optional: ['tabId'] },
-  { name: 'nav.forward', capability: 'nav', action: 'forward', description: 'Navigate forward in history.', optional: ['tabId'] },
-  { name: 'nav.reload', capability: 'nav', action: 'reload', description: 'Reload the current page.', optional: ['tabId'] },
   { name: 'browser.navigate', capability: 'stagehand', action: 'navigate', description: 'Navigate with Stagehand.', required: ['url'] },
   { name: 'browser.act', capability: 'stagehand', action: 'act', description: 'Perform an action with Stagehand.', required: ['instruction'] },
   {
@@ -53,69 +44,6 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   { name: 'browser.observe', capability: 'stagehand', action: 'observe', description: 'Observe the page with Stagehand.', required: ['instruction'] },
   { name: 'browser.screenshot', capability: 'stagehand', action: 'screenshot', description: 'Capture a screenshot with Stagehand.', optional: ['fullPage'] },
-  {
-    name: 'dom.automation',
-    capability: 'dom',
-    action: 'automation',
-    description: 'Run DOM automation actions. descriptorMode: balanced (default) or full (verbose element descriptors).',
-    required: ['actions'],
-    optional: ['tabId', 'timeoutMs', 'returnMode', 'descriptorMode'],
-    validate: (params) => {
-      if (!Array.isArray(params.actions)) return 'actions must be an array';
-      if (typeof params.descriptorMode === 'string'
-        && params.descriptorMode !== 'full'
-        && params.descriptorMode !== 'balanced') {
-        return 'descriptorMode must be "full" or "balanced"';
-      }
-      return null;
-    },
-  },
-  { name: 'storage.cookies.get', capability: 'storage', action: 'cookies.get', description: 'Read cookies.', optional: ['url', 'domain', 'name'] },
-  {
-    name: 'storage.cookies.set',
-    capability: 'storage',
-    action: 'cookies.set',
-    description: 'Set a cookie.',
-    required: ['cookie'],
-  },
-  {
-    name: 'storage.cookies.clear',
-    capability: 'storage',
-    action: 'cookies.clear',
-    description: 'Clear cookies.',
-    optional: ['url', 'domain', 'name'],
-    destructive: true,
-  },
-  {
-    name: 'storage.localStorage.get',
-    capability: 'storage',
-    action: 'localStorage.get',
-    description: 'Read localStorage value.',
-    required: ['key'],
-    optional: ['url'],
-  },
-  {
-    name: 'storage.localStorage.set',
-    capability: 'storage',
-    action: 'localStorage.set',
-    description: 'Set localStorage value.',
-    required: ['key', 'value'],
-    optional: ['url'],
-  },
-  {
-    name: 'storage.localStorage.clear',
-    capability: 'storage',
-    action: 'localStorage.clear',
-    description: 'Clear localStorage.',
-    optional: ['url'],
-    destructive: true,
-  },
-  { name: 'storage.credentials.get', capability: 'storage', action: 'credentials.get', description: 'Read stored credentials.', optional: ['id', 'domain'] },
-  { name: 'storage.credentials.set', capability: 'storage', action: 'credentials.set', description: 'Store credentials.', required: ['credential'] },
-  { name: 'storage.credentials.clear', capability: 'storage', action: 'credentials.clear', description: 'Clear stored credentials.', optional: ['id', 'domain'], destructive: true },
-  { name: 'downloads.list', capability: 'downloads', action: 'list', description: 'List downloads.', optional: ['state'] },
-  { name: 'downloads.open', capability: 'downloads', action: 'open', description: 'Open a downloaded file.', required: ['downloadId'] },
-  { name: 'downloads.clear', capability: 'downloads', action: 'clear', description: 'Clear downloads.', optional: ['state'], destructive: true },
   { name: 'file.dialog.open', capability: 'fileDialog', action: 'open', description: 'Open file dialog.', optional: ['title', 'multiple', 'filters'] },
   { name: 'file.dialog.save', capability: 'fileDialog', action: 'save', description: 'Save file dialog.', optional: ['title', 'defaultPath', 'filters'] },
   { name: 'clipboard.read', capability: 'clipboard', action: 'read', description: 'Read clipboard text.' },
@@ -130,9 +58,6 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   { name: 'window.minimize', capability: 'window', action: 'minimize', description: 'Minimize the window.', optional: ['windowId'] },
   { name: 'window.maximize', capability: 'window', action: 'maximize', description: 'Maximize the window.', optional: ['windowId'] },
   { name: 'window.restore', capability: 'window', action: 'restore', description: 'Restore the window.', optional: ['windowId'] },
-  { name: 'devtools.open', capability: 'devtools', action: 'open', description: 'Open devtools.', optional: ['tabId'] },
-  { name: 'devtools.close', capability: 'devtools', action: 'close', description: 'Close devtools.', optional: ['tabId'] },
-  { name: 'devtools.toggle', capability: 'devtools', action: 'toggle', description: 'Toggle devtools.', optional: ['tabId'] },
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

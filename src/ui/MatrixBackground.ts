@@ -6,6 +6,18 @@ type MatrixColors = {
   muted: Rgb;
 };
 
+type MatrixWatermark = {
+  lines: string[];
+  fontSize?: number;
+  opacity?: number;
+  lineHeight?: number;
+  fontFamily?: string;
+};
+
+type MatrixBackgroundOptions = {
+  watermark?: MatrixWatermark;
+};
+
 const DEFAULT_BG: Rgb = { r: 0, g: 0, b: 0 };
 const DEFAULT_ACCENT: Rgb = { r: 255, g: 255, b: 255 };
 const DEFAULT_MUTED: Rgb = { r: 140, g: 140, b: 140 };
@@ -34,10 +46,12 @@ export class MatrixBackground {
     accent: DEFAULT_ACCENT,
     muted: DEFAULT_MUTED,
   };
+  private watermark?: MatrixWatermark;
   private prefersReducedMotion: { matches: boolean };
 
-  constructor(overlay: HTMLElement) {
+  constructor(overlay: HTMLElement, options: MatrixBackgroundOptions = {}) {
     this.overlay = overlay;
+    this.watermark = options.watermark;
     this.prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-reduced-motion: reduce)')
       : { matches: false };
@@ -88,11 +102,14 @@ export class MatrixBackground {
   }
 
   private readColors(): void {
-    const rootStyles = getComputedStyle(document.documentElement);
+    const overlayStyles = getComputedStyle(this.overlay);
+    const bgValue = overlayStyles.getPropertyValue('--matrix-bg') || overlayStyles.getPropertyValue('--bg');
+    const accentValue = overlayStyles.getPropertyValue('--matrix-accent') || overlayStyles.getPropertyValue('--accent');
+    const mutedValue = overlayStyles.getPropertyValue('--matrix-muted') || overlayStyles.getPropertyValue('--text-muted');
     this.colors = {
-      bg: this.parseColor(rootStyles.getPropertyValue('--bg'), DEFAULT_BG),
-      accent: this.parseColor(rootStyles.getPropertyValue('--accent'), DEFAULT_ACCENT),
-      muted: this.parseColor(rootStyles.getPropertyValue('--text-muted'), DEFAULT_MUTED),
+      bg: this.parseColor(bgValue, DEFAULT_BG),
+      accent: this.parseColor(accentValue, DEFAULT_ACCENT),
+      muted: this.parseColor(mutedValue, DEFAULT_MUTED),
     };
   }
 
@@ -167,6 +184,7 @@ export class MatrixBackground {
     if (!this.ctx) return;
     this.ctx.fillStyle = this.toRgba(this.colors.bg, this.fadeAlpha);
     this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+    this.drawWatermark();
 
     for (let i = 0; i < this.columns; i++) {
       const char = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
@@ -189,6 +207,7 @@ export class MatrixBackground {
     if (!this.ctx) return;
     this.ctx.fillStyle = this.toRgba(this.colors.bg, 1);
     this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+    this.drawWatermark();
 
     const rows = Math.max(1, Math.floor(this.canvasHeight / this.fontSize));
     const density = 0.14;
@@ -206,6 +225,45 @@ export class MatrixBackground {
         this.ctx.fillText(char, x, y);
       }
     }
+  }
+
+  private drawWatermark(): void {
+    if (!this.ctx || !this.watermark?.lines?.length) return;
+    if (this.canvasWidth <= 0 || this.canvasHeight <= 0) return;
+
+    const ctx = this.ctx;
+    const fontFamily = this.watermark.fontFamily ?? this.fontFamily;
+    const opacity = this.watermark.opacity ?? 0.08;
+    let fontSize = this.watermark.fontSize ?? Math.max(18, Math.min(40, Math.floor(this.canvasWidth / 12)));
+    let lineHeight = this.watermark.lineHeight ?? Math.floor(fontSize * 1.2);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${fontSize}px ${fontFamily}`;
+
+    const maxWidth = this.canvasWidth * 0.85;
+    const widest = Math.max(...this.watermark.lines.map((line) => ctx.measureText(line).width));
+    if (widest > maxWidth && widest > 0 && !this.watermark.fontSize) {
+      const scale = maxWidth / widest;
+      fontSize = Math.max(10, Math.floor(fontSize * scale));
+      if (!this.watermark.lineHeight) {
+        lineHeight = Math.floor(fontSize * 1.2);
+      }
+      ctx.font = `${fontSize}px ${fontFamily}`;
+    }
+
+    ctx.fillStyle = this.toRgba(this.colors.accent, opacity);
+
+    const centerX = this.canvasWidth / 2;
+    const totalHeight = lineHeight * (this.watermark.lines.length - 1);
+    const startY = this.canvasHeight / 2 - totalHeight / 2;
+
+    this.watermark.lines.forEach((line, index) => {
+      ctx.fillText(line, centerX, startY + index * lineHeight);
+    });
+
+    ctx.restore();
   }
 
   private toRgba(color: Rgb, alpha: number): string {

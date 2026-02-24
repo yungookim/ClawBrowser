@@ -6,8 +6,10 @@ import modelCatalog from '../shared/modelCatalog.json';
 import { TabManager } from '../tabs/TabManager';
 import { Combobox } from '../ui/Combobox';
 import { Dropdown } from '../ui/Dropdown';
-import { VaultStore } from '../vault/VaultStore';
+import type { VaultStore } from '../vault/VaultStore';
 import { DEFAULT_AGENT_CONTROL, type AgentControlSettings } from '../agent/types';
+
+const WEBVIEW_AUTOMATION_ENABLED = false;
 
 type ModelConfig = {
   provider: string;
@@ -53,9 +55,6 @@ export class SettingsPanel {
   private visible = false;
   private lastActiveTabId: string | null = null;
   private onVisibilityChange: ((visible: boolean) => void) | null = null;
-  private onVaultEncryptionChange: ((enabled: boolean) => void) | null = null;
-  private vaultEncryptionEnabled = true;
-  private vaultToggleBusy = false;
 
   private bannerEl!: HTMLElement;
   private modelListEl!: HTMLElement;
@@ -102,9 +101,12 @@ export class SettingsPanel {
   private agentLogDetailSelect!: HTMLSelectElement;
   private agentLogRetentionInput!: HTMLInputElement;
   private agentStatusIndicatorInput!: HTMLInputElement;
-  private vaultEncryptionToggleInput!: HTMLInputElement;
-  private vaultEncryptionStatusEl!: HTMLElement;
   private onStartSetupWizard: (() => void) | null = null;
+  private handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      this.hide(true);
+    }
+  };
 
   constructor(
     container: HTMLElement,
@@ -112,22 +114,22 @@ export class SettingsPanel {
     tabManager: TabManager,
     vaultStore?: VaultStore,
     onStartSetupWizard?: () => void,
-    onVaultEncryptionChange?: (enabled: boolean) => void,
   ) {
     this.container = container;
     this.bridge = bridge;
     this.tabManager = tabManager;
     this.vaultStore = vaultStore || null;
     this.onStartSetupWizard = onStartSetupWizard || null;
-    this.onVaultEncryptionChange = onVaultEncryptionChange || null;
     this.root = this.build();
     this.container.appendChild(this.root);
 
-    this.tabManager.onChange(() => {
-      if (this.visible) {
-        this.hide(false);
-      }
-    });
+    if (WEBVIEW_AUTOMATION_ENABLED) {
+      this.tabManager.onChange(() => {
+        if (this.visible) {
+          this.hide(false);
+        }
+      });
+    }
   }
 
   setOnVisibilityChange(handler: (visible: boolean) => void): void {
@@ -149,12 +151,16 @@ export class SettingsPanel {
   private show(): void {
     if (this.visible) return;
     this.visible = true;
-    this.lastActiveTabId = this.tabManager.getActiveTabId();
+    this.lastActiveTabId = WEBVIEW_AUTOMATION_ENABLED ? this.tabManager.getActiveTabId() : null;
     this.root.classList.add('visible');
+    this.root.setAttribute('aria-hidden', 'false');
+    this.root.focus();
     this.onVisibilityChange?.(true);
-    invoke('hide_all_tabs').catch((err) => {
-      console.error('Failed to hide tabs:', err);
-    });
+    if (WEBVIEW_AUTOMATION_ENABLED) {
+      invoke('hide_all_tabs').catch((err) => {
+        console.error('Failed to hide tabs:', err);
+      });
+    }
     this.refreshAll().catch((err) => {
       this.setBanner(`Failed to refresh settings: ${String(err)}`, 'warn');
     });
@@ -164,8 +170,9 @@ export class SettingsPanel {
     if (!this.visible) return;
     this.visible = false;
     this.root.classList.remove('visible');
+    this.root.setAttribute('aria-hidden', 'true');
     this.onVisibilityChange?.(false);
-    if (restoreTab && this.lastActiveTabId) {
+    if (WEBVIEW_AUTOMATION_ENABLED && restoreTab && this.lastActiveTabId) {
       this.tabManager.switchTab(this.lastActiveTabId).catch((err) => {
         console.error('Failed to restore tab:', err);
       });
@@ -173,10 +180,22 @@ export class SettingsPanel {
   }
 
   private build(): HTMLElement {
-    const root = document.createElement('section');
-    root.className = 'settings-panel';
+    const root = document.createElement('div');
+    root.className = 'settings-dialog';
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('aria-hidden', 'true');
+    root.tabIndex = -1;
 
-    root.innerHTML = `
+    const backdrop = document.createElement('div');
+    backdrop.className = 'settings-backdrop';
+    backdrop.setAttribute('data-action', 'close');
+
+    const panel = document.createElement('section');
+    panel.className = 'settings-panel';
+    panel.setAttribute('role', 'document');
+
+    panel.innerHTML = `
       <div class="settings-shell">
         <header class="settings-hero">
           <div class="settings-hero-copy">
@@ -185,6 +204,7 @@ export class SettingsPanel {
             <p class="settings-subtitle">Configure models, automation, memory, logs, and system status from one console.</p>
           </div>
           <div class="settings-hero-actions">
+            <button class="settings-btn outline" data-action="close" type="button">Close</button>
             <button class="settings-btn outline" data-action="refresh" type="button">Refresh</button>
             <button class="settings-btn solid" data-action="reflection" type="button">Run Reflection</button>
           </div>
@@ -527,23 +547,6 @@ export class SettingsPanel {
             </div>
           </section>
 
-          <section class="settings-card" data-card="vault-security">
-            <div class="settings-card-header">
-              <h2>Vault Security</h2>
-              <p>Control whether API keys are encrypted on disk.</p>
-            </div>
-            <div class="settings-toggle-row" data-role="vault-encryption-row">
-              <div class="settings-toggle-copy">
-                <strong>Encrypt vault data</strong>
-                <span data-role="vault-encryption-status">Encryption enabled.</span>
-              </div>
-              <label class="switch">
-                <input type="checkbox" data-role="vault-encryption-toggle" aria-label="Encrypt vault data" />
-                <span class="switch-track"></span>
-              </label>
-            </div>
-          </section>
-
           <section class="settings-card" data-card="status">
             <div class="settings-card-header">
               <h2>System Status</h2>
@@ -556,9 +559,12 @@ export class SettingsPanel {
       </div>
     `;
 
-    const providerSlot = root.querySelector('[data-control="model-provider"]') as HTMLElement;
-    const modelSlot = root.querySelector('[data-control="model-input"]') as HTMLElement;
-    const roleSlot = root.querySelector('[data-control="model-role"]') as HTMLElement;
+    root.appendChild(backdrop);
+    root.appendChild(panel);
+
+    const providerSlot = panel.querySelector('[data-control="model-provider"]') as HTMLElement;
+    const modelSlot = panel.querySelector('[data-control="model-input"]') as HTMLElement;
+    const roleSlot = panel.querySelector('[data-control="model-role"]') as HTMLElement;
 
     this.modelProviderDropdown = new Dropdown({
       options: [
@@ -600,24 +606,24 @@ export class SettingsPanel {
     roleSlot.appendChild(this.modelRoleDropdown.element);
     this.modelRoleSelect = this.modelRoleDropdown.field;
 
-    this.bannerEl = root.querySelector('[data-role="status-banner"]') as HTMLElement;
-    this.modelListEl = root.querySelector('[data-role="model-list"]') as HTMLElement;
-    this.memoryFilesEl = root.querySelector('[data-role="memory-files"]') as HTMLElement;
-    this.memoryResultsEl = root.querySelector('[data-role="memory-results"]') as HTMLElement;
-    this.logsListEl = root.querySelector('[data-role="log-list"]') as HTMLElement;
-    this.logContentEl = root.querySelector('[data-role="log-content"]') as HTMLElement;
-    this.statusTilesEl = root.querySelector('[data-role="status-tiles"]') as HTMLElement;
-    this.statusRowsEl = root.querySelector('[data-role="status-rows"]') as HTMLElement;
-    this.memoryQueryInput = root.querySelector('[data-role="memory-query"]') as HTMLInputElement;
-    this.modelForm = root.querySelector('[data-form="model"]') as HTMLFormElement;
+    this.bannerEl = panel.querySelector('[data-role="status-banner"]') as HTMLElement;
+    this.modelListEl = panel.querySelector('[data-role="model-list"]') as HTMLElement;
+    this.memoryFilesEl = panel.querySelector('[data-role="memory-files"]') as HTMLElement;
+    this.memoryResultsEl = panel.querySelector('[data-role="memory-results"]') as HTMLElement;
+    this.logsListEl = panel.querySelector('[data-role="log-list"]') as HTMLElement;
+    this.logContentEl = panel.querySelector('[data-role="log-content"]') as HTMLElement;
+    this.statusTilesEl = panel.querySelector('[data-role="status-tiles"]') as HTMLElement;
+    this.statusRowsEl = panel.querySelector('[data-role="status-rows"]') as HTMLElement;
+    this.memoryQueryInput = panel.querySelector('[data-role="memory-query"]') as HTMLInputElement;
+    this.modelForm = panel.querySelector('[data-form="model"]') as HTMLFormElement;
     this.modelApiKeyInput = this.modelForm.querySelector('input[name="apiKey"]') as HTMLInputElement;
     this.modelBaseUrlInput = this.modelForm.querySelector('input[name="baseUrl"]') as HTMLInputElement;
-    this.allowlistForm = root.querySelector('[data-form="allowlist"]') as HTMLFormElement;
-    this.allowlistListEl = root.querySelector('[data-role="allowlist-list"]') as HTMLElement;
+    this.allowlistForm = panel.querySelector('[data-form="allowlist"]') as HTMLFormElement;
+    this.allowlistListEl = panel.querySelector('[data-role="allowlist-list"]') as HTMLElement;
     this.allowlistCommandInput = this.allowlistForm.querySelector('input[name="command"]') as HTMLInputElement;
     this.allowlistRegexInput = this.allowlistForm.querySelector('textarea[name="argsRegex"]') as HTMLTextAreaElement;
 
-    this.agentControlForm = root.querySelector('[data-form="agent-control"]') as HTMLFormElement;
+    this.agentControlForm = panel.querySelector('[data-form="agent-control"]') as HTMLFormElement;
     this.agentEnabledInput = this.agentControlForm.querySelector('[data-role="agent-enabled"]') as HTMLInputElement;
     this.agentKillSwitchInput = this.agentControlForm.querySelector('[data-role="agent-kill-switch"]') as HTMLInputElement;
     this.agentStatusIndicatorInput = this.agentControlForm.querySelector('[data-role="agent-status-indicator"]') as HTMLInputElement;
@@ -639,9 +645,8 @@ export class SettingsPanel {
     this.agentActionLogEnabledInput = this.agentControlForm.querySelector('[data-role="agent-log-enabled"]') as HTMLInputElement;
     this.agentLogDetailSelect = this.agentControlForm.querySelector('[data-role="agent-log-detail"]') as HTMLSelectElement;
     this.agentLogRetentionInput = this.agentControlForm.querySelector('[data-role="agent-log-retention"]') as HTMLInputElement;
-    this.vaultEncryptionToggleInput = root.querySelector('[data-role="vault-encryption-toggle"]') as HTMLInputElement;
-    this.vaultEncryptionStatusEl = root.querySelector('[data-role="vault-encryption-status"]') as HTMLElement;
 
+    root.addEventListener('keydown', this.handleKeydown);
     root.addEventListener('click', (event) => {
       const target = event.target as HTMLElement | null;
       const actionEl = target?.closest('[data-action]') as HTMLElement | null;
@@ -650,14 +655,6 @@ export class SettingsPanel {
       if (!action) return;
       event.preventDefault();
       this.handleAction(action);
-    });
-
-    this.vaultEncryptionToggleInput.addEventListener('change', () => {
-      if (this.vaultToggleBusy) {
-        this.vaultEncryptionToggleInput.checked = this.vaultEncryptionEnabled;
-        return;
-      }
-      void this.handleVaultEncryptionToggle(this.vaultEncryptionToggleInput.checked);
     });
 
     this.memoryQueryInput.addEventListener('keydown', (event) => {
@@ -687,7 +684,7 @@ export class SettingsPanel {
       this.submitAgentControlForm();
     });
 
-    const cards = root.querySelectorAll('.settings-card');
+    const cards = panel.querySelectorAll('.settings-card');
     cards.forEach((card, index) => {
       (card as HTMLElement).style.setProperty('--delay', `${index * 0.06}s`);
     });
@@ -695,13 +692,44 @@ export class SettingsPanel {
     this.applyModelDefaults();
     this.updateModelOptions();
     this.renderAgentControl(DEFAULT_AGENT_CONTROL);
-    this.renderVaultEncryption(this.vaultEncryptionEnabled);
+    if (!WEBVIEW_AUTOMATION_ENABLED) {
+      this.markWebviewOnlyRows(panel);
+    }
 
     return root;
   }
 
+  private markWebviewOnlyRows(root: HTMLElement): void {
+    const roles = [
+      'agent-auto-grant-origins',
+      'agent-auto-grant-perms',
+      'agent-allow-cookies',
+      'agent-allow-localstorage',
+      'agent-allow-credentials',
+      'agent-allow-downloads',
+      'agent-devtools',
+    ];
+
+    roles.forEach((role) => {
+      const input = root.querySelector(`[data-role="${role}"]`) as HTMLElement | null;
+      const row = input?.closest('.settings-toggle-row') || input?.closest('.settings-field');
+      if (row) {
+        row.setAttribute('data-webview-only', 'true');
+      }
+    });
+
+    const dividers = root.querySelectorAll('.settings-divider');
+    if (dividers.length > 1) {
+      const divider = dividers[1] as HTMLElement | undefined;
+      divider?.setAttribute('data-webview-only', 'true');
+    }
+  }
+
   private handleAction(action: string): void {
     switch (action) {
+      case 'close':
+        this.hide(true);
+        return;
       case 'refresh':
         this.refreshAll().catch((err) => {
           this.setBanner(`Refresh failed: ${String(err)}`, 'warn');
@@ -783,11 +811,9 @@ export class SettingsPanel {
       const config = configRes.value as {
         commandAllowlist: Array<{ command: string; argsRegex: string[] }>;
         agentControl?: AgentControlSettings;
-        vaultEncryptionEnabled?: boolean;
       };
       this.renderAllowlist(config.commandAllowlist || []);
       this.renderAgentControl(config.agentControl || DEFAULT_AGENT_CONTROL);
-      this.renderVaultEncryption(config.vaultEncryptionEnabled !== false);
     }
 
     if (logsRes.status === 'fulfilled') {
@@ -862,13 +888,9 @@ export class SettingsPanel {
       if (apiKey) {
         if (!this.vaultStore) {
           this.setBanner('Model saved, but vault is unavailable. API key was not persisted.', 'warn');
-        } else if (this.vaultEncryptionEnabled && !this.vaultStore.isUnlocked) {
-          this.setBanner('Model saved, but vault is locked. API key was not persisted.', 'warn');
         } else {
           await this.vaultStore.set(`apikey:${role}`, apiKey);
-          const payload = this.vaultEncryptionEnabled
-            ? await this.vaultStore.exportEncrypted()
-            : await this.vaultStore.exportPlaintext();
+          const payload = await this.vaultStore.exportPlaintext();
           await this.bridge.saveVault(payload);
         }
       }
@@ -880,122 +902,6 @@ export class SettingsPanel {
       this.renderModels(models);
     } catch (err) {
       this.setBanner(`Failed to save model: ${String(err)}`, 'warn');
-    }
-  }
-
-  private renderVaultEncryption(enabled: boolean): void {
-    this.vaultEncryptionEnabled = enabled;
-    if (this.vaultEncryptionToggleInput) {
-      this.vaultEncryptionToggleInput.checked = enabled;
-    }
-    if (this.vaultEncryptionStatusEl) {
-      this.vaultEncryptionStatusEl.textContent = enabled
-        ? 'Encryption enabled.'
-        : 'Encryption disabled (plaintext).';
-    }
-  }
-
-  private async handleVaultEncryptionToggle(nextEnabled: boolean): Promise<void> {
-    const previous = this.vaultEncryptionEnabled;
-    if (nextEnabled === previous) return;
-    this.vaultToggleBusy = true;
-    if (this.vaultEncryptionToggleInput) {
-      this.vaultEncryptionToggleInput.disabled = true;
-    }
-
-    if (!this.vaultStore) {
-      this.setBanner('Vault unavailable. Unable to change encryption.', 'warn');
-      this.renderVaultEncryption(previous);
-      this.vaultToggleBusy = false;
-      if (this.vaultEncryptionToggleInput) {
-        this.vaultEncryptionToggleInput.disabled = false;
-      }
-      return;
-    }
-
-    if (!nextEnabled) {
-      const confirmed = window.confirm(
-        'Disable vault encryption? API keys will be stored in plaintext on disk.',
-      );
-      if (!confirmed) {
-        this.renderVaultEncryption(previous);
-        this.vaultToggleBusy = false;
-        if (this.vaultEncryptionToggleInput) {
-          this.vaultEncryptionToggleInput.disabled = false;
-        }
-        return;
-      }
-      if (!this.vaultStore.isUnlocked) {
-        this.setBanner('Unlock the vault before disabling encryption.', 'warn');
-        this.renderVaultEncryption(previous);
-        this.vaultToggleBusy = false;
-        if (this.vaultEncryptionToggleInput) {
-          this.vaultEncryptionToggleInput.disabled = false;
-        }
-        return;
-      }
-      try {
-        const plaintext = await this.vaultStore.exportPlaintext();
-        await this.vaultStore.importPlaintext(plaintext);
-        await this.bridge.saveVault(plaintext);
-        await this.bridge.updateConfig({ vaultEncryptionEnabled: false });
-        this.vaultStore.setEncryptionEnabled(false);
-        this.renderVaultEncryption(false);
-        this.onVaultEncryptionChange?.(false);
-        this.setBanner('Vault encryption disabled. Data stored in plaintext.', 'warn');
-      } catch (err) {
-        this.setBanner(`Failed to disable encryption: ${String(err)}`, 'warn');
-        this.renderVaultEncryption(previous);
-      } finally {
-        this.vaultToggleBusy = false;
-        if (this.vaultEncryptionToggleInput) {
-          this.vaultEncryptionToggleInput.disabled = false;
-        }
-      }
-      return;
-    }
-
-    const password = window.prompt('Create a new passphrase (min 8 characters).') || '';
-    if (password.length < 8) {
-      this.setBanner('Passphrase must be at least 8 characters.', 'warn');
-      this.renderVaultEncryption(previous);
-      this.vaultToggleBusy = false;
-      if (this.vaultEncryptionToggleInput) {
-        this.vaultEncryptionToggleInput.disabled = false;
-      }
-      return;
-    }
-    const confirm = window.prompt('Confirm your new passphrase.') || '';
-    if (password !== confirm) {
-      this.setBanner('Passphrases do not match.', 'warn');
-      this.renderVaultEncryption(previous);
-      this.vaultToggleBusy = false;
-      if (this.vaultEncryptionToggleInput) {
-        this.vaultEncryptionToggleInput.disabled = false;
-      }
-      return;
-    }
-
-    try {
-      const entries = this.vaultStore.getPlaintextEntries();
-      await this.vaultStore.unlockEncrypted(password);
-      for (const [key, value] of Object.entries(entries)) {
-        await this.vaultStore.set(key, value);
-      }
-      const encrypted = await this.vaultStore.exportEncrypted();
-      await this.bridge.saveVault(encrypted);
-      await this.bridge.updateConfig({ vaultEncryptionEnabled: true });
-      this.renderVaultEncryption(true);
-      this.onVaultEncryptionChange?.(true);
-      this.setBanner('Vault encryption enabled.', 'good');
-    } catch (err) {
-      this.setBanner(`Failed to enable encryption: ${String(err)}`, 'warn');
-      this.renderVaultEncryption(previous);
-    } finally {
-      this.vaultToggleBusy = false;
-      if (this.vaultEncryptionToggleInput) {
-        this.vaultEncryptionToggleInput.disabled = false;
-      }
     }
   }
 

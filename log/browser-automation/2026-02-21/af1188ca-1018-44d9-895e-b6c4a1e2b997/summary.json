@@ -1,0 +1,20 @@
+{
+  "traceId": "af1188ca-1018-44d9-895e-b6c4a1e2b997",
+  "attempts": 33,
+  "successes": 32,
+  "failures": 1,
+  "providers": {
+    "stagehand": {
+      "attempts": 33,
+      "successes": 32,
+      "failures": 1
+    }
+  },
+  "updatedAt": "2026-02-21T22:28:01.832Z",
+  "lastOutcome": {
+    "provider": "stagehand",
+    "ok": true,
+    "action": "act",
+    "attemptId": "attempt-33"
+  }
+}

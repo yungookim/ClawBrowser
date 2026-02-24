@@ -1,0 +1,2 @@
+{"ts":"2026-02-24T19:48:14.264Z","traceId":"bab928a9-a89e-4b24-81ef-7d654826f79d","retryUsed":false,"stagehandDisabled":false,"event":"start","attemptId":"attempt-1","action":"extract","provider":"stagehand","toolArgsHash":"2e879795ec95"}
+{"ts":"2026-02-24T19:48:33.950Z","traceId":"bab928a9-a89e-4b24-81ef-7d654826f79d","retryUsed":false,"stagehandDisabled":false,"event":"success","attemptId":"attempt-1","action":"extract","provider":"stagehand","toolArgsHash":"2e879795ec95","durationMs":19634}

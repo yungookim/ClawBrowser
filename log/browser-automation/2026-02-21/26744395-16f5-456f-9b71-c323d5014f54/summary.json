@@ -1,0 +1,26 @@
+{
+  "traceId": "26744395-16f5-456f-9b71-c323d5014f54",
+  "attempts": 15,
+  "successes": 11,
+  "failures": 4,
+  "providers": {
+    "stagehand": {
+      "attempts": 13,
+      "successes": 11,
+      "failures": 2
+    },
+    "webview": {
+      "attempts": 2,
+      "successes": 0,
+      "failures": 2
+    }
+  },
+  "updatedAt": "2026-02-21T21:50:02.245Z",
+  "lastOutcome": {
+    "provider": "webview",
+    "ok": false,
+    "reason": "Dom automation timeout (a8409d5c-c0a3-44c3-9d1e-b1b819df953d)",
+    "action": "extract",
+    "attemptId": "attempt-15"
+  }
+}

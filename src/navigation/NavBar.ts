@@ -23,6 +23,7 @@ export class NavBar {
     this.onSettingsToggle = options?.onSettingsToggle ?? null;
     this.onOpenSession = options?.onOpenSession ?? null;
     this.showNavigation = options?.showNavigation ?? true;
+    this.container.classList.toggle('nav-bar-compact', !this.showNavigation);
     this.build();
 
     // Subscribe to tab changes to update URL bar

@@ -25,7 +25,6 @@ describe('ConfigStore', () => {
 
     expect(config.onboardingComplete).toBe(false);
     expect(config.commandAllowlist.length).toBeGreaterThan(0);
-    expect(config.vaultEncryptionEnabled).toBe(true);
 
     const configPath = path.join(baseDir, '.clawbrowser', 'config.json');
     const raw = await fs.readFile(configPath, 'utf-8');
@@ -38,7 +37,6 @@ describe('ConfigStore', () => {
 
     await store.update({
       onboardingComplete: true,
-      vaultEncryptionEnabled: false,
       models: {
         primary: { provider: 'openai', model: 'gpt-4o' },
       },
@@ -46,13 +44,11 @@ describe('ConfigStore', () => {
 
     expect(store.get().onboardingComplete).toBe(true);
     expect(store.get().models.primary?.model).toBe('gpt-4o');
-    expect(store.get().vaultEncryptionEnabled).toBe(false);
 
     const reloaded = new ConfigStore({ baseDir });
     const next = await reloaded.load();
     expect(next.onboardingComplete).toBe(true);
     expect(next.models.primary?.provider).toBe('openai');
-    expect(next.vaultEncryptionEnabled).toBe(false);
   });
 
   it('persists an explicit empty allowlist', async () => {
@@ -71,9 +67,9 @@ describe('ConfigStore', () => {
     const store = new ConfigStore({ baseDir });
     await store.load();
 
-    await store.saveVault('encrypted-data');
+    await store.saveVault('{"entries":{"apikey:primary":"sk-test"}}');
     const data = await store.loadVault();
-    expect(data).toBe('encrypted-data');
+    expect(data).toBe('{"entries":{"apikey:primary":"sk-test"}}');
   });
 
   it('loads default agentRecovery settings', async () => {

@@ -12,7 +12,7 @@
     "tauri": "tauri",
     "dev": "CLAW_LOG_DIR=./log npm run build:sidecar && CLAW_LOG_DIR=./log concurrently -k -n sidecar,tauri -c blue,green \"npm run dev:sidecar\" \"npm run dev:tauri\"",
     "build": "npm run build:sidecar && tauri build",
-    "test": "vitest run --coverage --config vitest.config.ts"
+    "test": "vitest run --coverage --config vitest.config.ts && node sidecar/tools/analyze-browser-automation.js"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2",

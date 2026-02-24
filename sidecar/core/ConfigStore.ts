@@ -61,7 +61,6 @@ export interface AppConfig {
   commandAllowlist: CommandAllowlistEntry[];
   agentControl: AgentControlSettings;
   agentRecovery: AgentRecoverySettings;
-  vaultEncryptionEnabled: boolean;
 }
 
 export interface ConfigStoreOptions {
@@ -76,7 +75,6 @@ const DEFAULT_CONFIG: AppConfig = {
     { command: 'codex', argsRegex: ['^--project$', '^.+$'] },
     { command: 'claude', argsRegex: ['^code$', '^--project$', '^.+$'] },
   ],
-  vaultEncryptionEnabled: true,
   agentRecovery: {
     maxRetries: 2,
     enabled: true,
@@ -259,9 +257,6 @@ function normalizeConfig(input: unknown): AppConfig {
   const hasAllowlistField = Object.prototype.hasOwnProperty.call(data, 'commandAllowlist');
   const agentControl = normalizeAgentControl(data.agentControl);
   const agentRecovery = normalizeAgentRecovery(data.agentRecovery);
-  const vaultEncryptionEnabled = typeof data.vaultEncryptionEnabled === 'boolean'
-    ? data.vaultEncryptionEnabled
-    : DEFAULT_CONFIG.vaultEncryptionEnabled;
 
   return {
     onboardingComplete,
@@ -274,7 +269,6 @@ function normalizeConfig(input: unknown): AppConfig {
         : DEFAULT_CONFIG.commandAllowlist,
     agentControl,
     agentRecovery,
-    vaultEncryptionEnabled,
   };
 }
 
@@ -353,9 +347,6 @@ export class ConfigStore {
       agentRecovery: partial.agentRecovery
         ? normalizeAgentRecovery({ ...current.agentRecovery, ...partial.agentRecovery })
         : current.agentRecovery,
-      vaultEncryptionEnabled: typeof partial.vaultEncryptionEnabled === 'boolean'
-        ? partial.vaultEncryptionEnabled
-        : current.vaultEncryptionEnabled,
     };
 
     await this.save(updated);

@@ -14,28 +14,17 @@ const mocks = vi.hoisted(() => ({
   sidecarUpdateConfig: vi.fn(),
   sidecarConfigureModel: vi.fn(),
   voiceOnResult: null as null | ((transcript: string) => void),
-  vaultUIShow: vi.fn(),
-  vaultUIHide: vi.fn(),
-  vaultUISetEncryptedData: vi.fn(),
-  vaultUISetOnUnlock: vi.fn(),
-  vaultUISetMissingVaultData: vi.fn(),
-  vaultUISetOnRecover: vi.fn(),
-  vaultOnUnlock: null as null | (() => void),
-  vaultOnRecover: null as null | (() => void),
   wizardShow: vi.fn(),
   wizardSetOnComplete: vi.fn(),
   wizardOnComplete: null as null | ((result: any) => void),
-  vaultGet: vi.fn(),
-  vaultSet: vi.fn(),
-  vaultExport: vi.fn(),
-  vaultImport: vi.fn(),
   vaultStoreGet: vi.fn(),
   vaultStoreSet: vi.fn(),
-  vaultStoreExportEncrypted: vi.fn(),
   vaultStoreExportPlaintext: vi.fn(),
   vaultStoreImportPlaintext: vi.fn(),
-  vaultStoreSetEncryptionEnabled: vi.fn(),
-  vaultStoreIsUnlocked: true,
+}));
+
+const matrixMocks = vi.hoisted(() => ({
+  options: null as null | { watermark?: { lines: string[] } },
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -101,6 +90,15 @@ vi.mock('../../src/agent/AgentPanel', () => ({
   },
 }));
 
+vi.mock('../../src/ui/MatrixBackground', () => ({
+  MatrixBackground: class {
+    constructor(_el: HTMLElement, options?: { watermark?: { lines: string[] } }) {
+      matrixMocks.options = options ?? null;
+    }
+    start = vi.fn();
+  },
+}));
+
 vi.mock('../../src/voice/VoiceInput', () => ({
   VoiceInput: class {
     constructor(_el: HTMLElement) {}
@@ -110,46 +108,12 @@ vi.mock('../../src/voice/VoiceInput', () => ({
   },
 }));
 
-vi.mock('../../src/vault/Vault', () => ({
-  Vault: class {
-    isUnlocked = true;
-    unlock = vi.fn();
-    get = (...args: any[]) => mocks.vaultGet(...args);
-    set = (...args: any[]) => mocks.vaultSet(...args);
-    exportEncrypted = (...args: any[]) => mocks.vaultExport(...args);
-    importEncrypted = (...args: any[]) => mocks.vaultImport(...args);
-  },
-}));
-
 vi.mock('../../src/vault/VaultStore', () => ({
   VaultStore: class {
-    constructor(_vault: unknown, _enabled: boolean) {}
-    get isUnlocked(): boolean { return mocks.vaultStoreIsUnlocked; }
     get = (...args: any[]) => mocks.vaultStoreGet(...args);
     set = (...args: any[]) => mocks.vaultStoreSet(...args);
-    exportEncrypted = (...args: any[]) => mocks.vaultStoreExportEncrypted(...args);
     exportPlaintext = (...args: any[]) => mocks.vaultStoreExportPlaintext(...args);
     importPlaintext = (...args: any[]) => mocks.vaultStoreImportPlaintext(...args);
-    setEncryptionEnabled = (...args: any[]) => mocks.vaultStoreSetEncryptionEnabled(...args);
-    setEncryptedData = vi.fn();
-  },
-}));
-
-vi.mock('../../src/vault/VaultUI', () => ({
-  VaultUI: class {
-    constructor(_vault: unknown) {}
-    show(): void { mocks.vaultUIShow(); }
-    hide(): void { mocks.vaultUIHide(); }
-    setEncryptedData(data: string | null): void { mocks.vaultUISetEncryptedData(data); }
-    setMissingVaultData(missing: boolean): void { mocks.vaultUISetMissingVaultData(missing); }
-    setOnUnlock(handler: () => void): void {
-      mocks.vaultUISetOnUnlock();
-      mocks.vaultOnUnlock = handler;
-    }
-    setOnRecover(handler: () => void): void {
-      mocks.vaultUISetOnRecover();
-      mocks.vaultOnRecover = handler;
-    }
   },
 }));
 
@@ -168,11 +132,16 @@ describe('main bootstrap', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    document.body.innerHTML = `
-      <div id="tab-bar"></div>
-      <div id="nav-bar"></div>
-      <div id="agent-panel"></div>
-    `;
+    document.body.textContent = '';
+    const app = document.createElement('div');
+    app.id = 'app';
+    const navBar = document.createElement('div');
+    navBar.id = 'nav-bar';
+    const agentPanel = document.createElement('div');
+    agentPanel.id = 'agent-panel';
+    app.appendChild(navBar);
+    app.appendChild(agentPanel);
+    document.body.appendChild(app);
     mocks.invoke.mockResolvedValue(undefined);
     mocks.tabManagerInit.mockResolvedValue(undefined);
     mocks.createTab.mockResolvedValue('tab-1');
@@ -184,27 +153,18 @@ describe('main bootstrap', () => {
       models: {},
       commandAllowlist: [],
       agentControl: {},
-      vaultEncryptionEnabled: true,
     });
     mocks.sidecarLoadVault.mockResolvedValue({ data: null });
     mocks.sidecarSaveVault.mockResolvedValue({ status: 'ok' });
     mocks.sidecarUpdateConfig.mockResolvedValue({ status: 'ok' });
     mocks.sidecarConfigureModel.mockResolvedValue(undefined);
-    mocks.vaultGet.mockResolvedValue(undefined);
-    mocks.vaultSet.mockResolvedValue(undefined);
-    mocks.vaultExport.mockResolvedValue('encrypted');
-    mocks.vaultImport.mockResolvedValue(undefined);
     mocks.vaultStoreGet.mockResolvedValue(undefined);
     mocks.vaultStoreSet.mockResolvedValue(undefined);
-    mocks.vaultStoreExportEncrypted.mockResolvedValue('encrypted');
-    mocks.vaultStoreExportPlaintext.mockResolvedValue('plaintext');
+    mocks.vaultStoreExportPlaintext.mockResolvedValue('{"entries":{}}');
     mocks.vaultStoreImportPlaintext.mockResolvedValue(undefined);
-    mocks.vaultStoreSetEncryptionEnabled.mockResolvedValue(undefined);
-    mocks.vaultStoreIsUnlocked = true;
     mocks.voiceOnResult = null;
     mocks.resizeHandler = null;
-    mocks.vaultOnUnlock = null;
-    mocks.vaultOnRecover = null;
+    matrixMocks.options = null;
   });
 
   it('initializes UI and wires handlers', async () => {
@@ -219,11 +179,15 @@ describe('main bootstrap', () => {
     mocks.voiceOnResult?.('hello');
     expect(mocks.sidecarAgentQuery).toHaveBeenCalledWith('hello');
 
-    mocks.resizeHandler?.();
-    expect(mocks.invoke).toHaveBeenCalledWith('reposition_tabs');
+    expect(mocks.resizeHandler).toBeNull();
+    expect(mocks.invoke).not.toHaveBeenCalledWith('reposition_tabs');
+    expect(matrixMocks.options?.watermark?.lines).toEqual([
+      'CLAWBROWSER',
+      'THE SMARTEST CHILD OF OPENCLAW.',
+    ]);
   });
 
-  it('shows vault UI when onboarding is complete and configures models on unlock', async () => {
+  it('loads vault and configures models when onboarding is complete', async () => {
     mocks.sidecarGetConfig.mockResolvedValueOnce({
       onboardingComplete: true,
       workspacePath: null,
@@ -232,40 +196,6 @@ describe('main bootstrap', () => {
       },
       commandAllowlist: [],
       agentControl: {},
-      vaultEncryptionEnabled: true,
-    });
-    mocks.sidecarLoadVault.mockResolvedValueOnce({ data: 'vault-data' });
-    mocks.vaultStoreGet.mockResolvedValueOnce('sk-test');
-
-    await import('../../src/main');
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    expect(mocks.vaultUISetEncryptedData).toHaveBeenCalledWith('vault-data');
-    expect(mocks.vaultUIShow).toHaveBeenCalled();
-
-    mocks.vaultOnUnlock?.();
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    expect(mocks.sidecarConfigureModel).toHaveBeenCalledWith(
-      'openai',
-      'gpt-4o',
-      'sk-test',
-      'primary',
-      undefined,
-      undefined,
-    );
-  });
-
-  it('bypasses vault UI when encryption is disabled', async () => {
-    mocks.sidecarGetConfig.mockResolvedValueOnce({
-      onboardingComplete: true,
-      workspacePath: null,
-      models: {
-        primary: { provider: 'openai', model: 'gpt-4o' },
-      },
-      commandAllowlist: [],
-      agentControl: {},
-      vaultEncryptionEnabled: false,
     });
     mocks.sidecarLoadVault.mockResolvedValueOnce({ data: '{"entries":{"apikey:primary":"sk-test"}}' });
     mocks.vaultStoreGet.mockResolvedValueOnce('sk-test');
@@ -273,7 +203,6 @@ describe('main bootstrap', () => {
     await import('../../src/main');
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(mocks.vaultUIShow).not.toHaveBeenCalled();
     expect(mocks.vaultStoreImportPlaintext).toHaveBeenCalledWith('{"entries":{"apikey:primary":"sk-test"}}');
     expect(mocks.sidecarConfigureModel).toHaveBeenCalledWith(
       'openai',

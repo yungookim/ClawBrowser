@@ -4,9 +4,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 SIDECAR_JS=""
+REPO_ROOT=""
 for ROOT in "$SCRIPT_DIR/../.." "$SCRIPT_DIR/../../.."; do
   if [ -f "$ROOT/sidecar/dist/main.js" ]; then
     SIDECAR_JS="$ROOT/sidecar/dist/main.js"
+    REPO_ROOT="$(cd "$ROOT" && pwd)"
     break
   fi
 done
@@ -16,4 +18,6 @@ if [ -z "$SIDECAR_JS" ]; then
   exit 1
 fi
 
+# Run from repo root so relative paths (e.g. CLAW_LOG_DIR=./log) resolve correctly
+cd "$REPO_ROOT"
 exec node "$SIDECAR_JS"

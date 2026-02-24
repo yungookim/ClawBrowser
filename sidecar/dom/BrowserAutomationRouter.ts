@@ -72,16 +72,17 @@ type TraceState = {
 
 type RouterOptions = {
   stagehandProvider: BrowserAutomationProvider;
-  webviewProvider: BrowserAutomationProvider;
+  webviewProvider?: BrowserAutomationProvider | null;
   systemLogger?: SystemLogger | null;
   retentionRuns?: number;
 };
 
 const DEFAULT_RETENTION_RUNS = 20;
+const WEBVIEW_DISABLED_ERROR = 'Webview automation disabled (Stagehand-only mode).';
 
 export class BrowserAutomationRouter {
   private stagehandProvider: BrowserAutomationProvider;
-  private webviewProvider: BrowserAutomationProvider;
+  private webviewProvider: BrowserAutomationProvider | null;
   private systemLogger: SystemLogger | null;
   private retentionRuns: number;
   private traceStates = new Map<string, TraceState>();
@@ -89,7 +90,7 @@ export class BrowserAutomationRouter {
 
   constructor(options: RouterOptions) {
     this.stagehandProvider = options.stagehandProvider;
-    this.webviewProvider = options.webviewProvider;
+    this.webviewProvider = options.webviewProvider || null;
     this.systemLogger = options.systemLogger || null;
     this.retentionRuns = options.retentionRuns || DEFAULT_RETENTION_RUNS;
   }
@@ -132,7 +133,24 @@ export class BrowserAutomationRouter {
       }
 
       stepState.stagehandDisabled = true;
+      if (!this.webviewProvider) {
+        await this.logFallback(traceState, stepState, context.stepId, action, toolArgsHash, stagehandResult.error || 'Stagehand failed', 'webview');
+        return {
+          ok: false,
+          error: `Stagehand failed twice: ${stagehandResult.error || 'unknown error'}. ${WEBVIEW_DISABLED_ERROR}`,
+          meta: { provider: this.stagehandProvider.name, fallback: null },
+        };
+      }
       await this.logFallback(traceState, stepState, context.stepId, action, toolArgsHash, stagehandResult.error || 'Stagehand failed', 'webview');
+    }
+
+    if (!this.webviewProvider) {
+      const reason = shouldUseStagehand ? 'Stagehand failed twice.' : 'Stagehand disabled.';
+      return {
+        ok: false,
+        error: `${reason} ${WEBVIEW_DISABLED_ERROR}`,
+        meta: { provider: this.stagehandProvider.name, fallback: null },
+      };
     }
 
     const webviewResult = await this.runProviderAttempt({
@@ -153,7 +171,7 @@ export class BrowserAutomationRouter {
     const webviewReason = webviewResult.error || 'Webview fallback failed.';
     return {
       ok: false,
-      error: `${stagehandReason} Webview fallback failed: ${webviewReason}. You can retry browser.* (webview) or use dom.automation tools directly.`,
+      error: `${stagehandReason} Webview fallback failed: ${webviewReason}.`,
       meta: { provider: this.webviewProvider.name, fallback: 'webview' },
     };
   }
