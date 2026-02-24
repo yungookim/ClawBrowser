@@ -1,4 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  return {
+    ...actual,
+    mkdir: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { ModelManager } from '../../sidecar/core/ModelManager';
 import { StagehandBridge } from '../../sidecar/dom/StagehandBridge';
 
@@ -37,9 +48,9 @@ const stagehandMocks = {
   browser: undefined as MockBrowser | undefined,
 };
 
-function makeConfigStore(models: Record<string, any> = {}) {
+function makeConfigStore(models: Record<string, any> = {}, workspacePath: string | null = null) {
   return {
-    get: () => ({ models }),
+    get: () => ({ models, workspacePath }),
   } as any;
 }
 
@@ -107,6 +118,24 @@ describe('StagehandBridge', () => {
     expect(stagehandMocks.init).toHaveBeenCalledTimes(1);
   });
 
+  it('configures a persistent userDataDir', async () => {
+    const workspacePath = '/tmp/clawbrowser-workspace';
+    const bridge = new StagehandBridge(new ModelManager(), makeConfigStore({}, workspacePath), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    await bridge.act('do');
+
+    const options = stagehandMocks.createStagehand.mock.calls[0][0];
+    expect(options.localBrowserLaunchOptions?.userDataDir)
+      .toBe(path.join(workspacePath, 'browser-profile', 'default'));
+    expect(options.localBrowserLaunchOptions?.preserveUserDataDir).toBe(true);
+    expect(fs.mkdir).toHaveBeenCalledWith(
+      path.join(workspacePath, 'browser-profile', 'default'),
+      { recursive: true },
+    );
+  });
+
   it('reuses Stagehand across calls', async () => {
     const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
       createStagehand: stagehandMocks.createStagehand,
@@ -121,8 +150,13 @@ describe('StagehandBridge', () => {
 
   it('coalesces concurrent init calls', async () => {
     let resolveInit: (() => void) | null = null;
+    let initStartedResolve: (() => void) | null = null;
+    const initStarted = new Promise<void>((resolve) => {
+      initStartedResolve = resolve;
+    });
     stagehandMocks.init.mockImplementation(() => new Promise<void>((resolve) => {
       resolveInit = resolve;
+      initStartedResolve?.();
     }));
 
     const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
@@ -132,11 +166,12 @@ describe('StagehandBridge', () => {
     const callA = bridge.act('do A');
     const callB = bridge.observe('do B');
 
-    expect(stagehandMocks.createStagehand).toHaveBeenCalledTimes(1);
-    expect(stagehandMocks.init).toHaveBeenCalledTimes(1);
-
+    await initStarted;
     resolveInit?.();
     await Promise.all([callA, callB]);
+
+    expect(stagehandMocks.createStagehand).toHaveBeenCalledTimes(1);
+    expect(stagehandMocks.init).toHaveBeenCalledTimes(1);
   });
 
   it('executes navigate, act, extract, observe, and screenshot', async () => {
@@ -157,6 +192,17 @@ describe('StagehandBridge', () => {
     expect(shot.mime).toBe('image/png');
     expect(shot.dataBase64).toBe(Buffer.from('image').toString('base64'));
     expect(stagehandMocks.context?.newPage).toHaveBeenCalled();
+  });
+
+  it('opens a session tab', async () => {
+    const bridge = new StagehandBridge(new ModelManager(), makeConfigStore(), {
+      createStagehand: stagehandMocks.createStagehand,
+    });
+
+    await bridge.openSession();
+
+    expect(stagehandMocks.context?.newPage).toHaveBeenCalled();
+    expect(stagehandMocks.page?.goto).toHaveBeenCalledWith('about:blank');
   });
 
   it('opens a new tab when instruction includes a URL', async () => {

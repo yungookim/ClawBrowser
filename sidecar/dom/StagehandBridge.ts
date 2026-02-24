@@ -1,3 +1,6 @@
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Stagehand } from '@browserbasehq/stagehand';
 import { z, type ZodTypeAny } from 'zod';
 import type { ModelManager } from '../core/ModelManager.js';
@@ -61,7 +64,11 @@ type StagehandInitOptions = {
     apiKey?: string;
     baseURL?: string;
   };
-  localBrowserLaunchOptions: { headless: boolean };
+  localBrowserLaunchOptions: {
+    headless: boolean;
+    userDataDir?: string;
+    preserveUserDataDir?: boolean;
+  };
   logger?: (logLine: any) => void;
   disablePino?: boolean;
 };
@@ -293,13 +300,18 @@ export class StagehandBridge {
   private async initStagehand(): Promise<StagehandLike> {
     const modelConfig = this.resolveModelConfig();
     const modelClientOptions = this.buildModelClientOptions(modelConfig);
+    const userDataDir = await this.resolveUserDataDir();
     this.logModelConfig(modelConfig);
     const stagehand = this.createStagehand({
       env: 'LOCAL',
       modelName: modelConfig.modelName,
       model: modelConfig.modelName,
       ...(modelClientOptions ? { modelClientOptions } : {}),
-      localBrowserLaunchOptions: { headless: false },
+      localBrowserLaunchOptions: {
+        headless: false,
+        userDataDir,
+        preserveUserDataDir: true,
+      },
       logger: this.buildLogger(),
       disablePino: true,
     });
@@ -408,6 +420,63 @@ export class StagehandBridge {
     }
     this.logStagehandTabOpen(url);
     return page;
+  }
+
+  async openSession(): Promise<void> {
+    await this.runWithRecovery(async (stagehand) => {
+      await this.openNewTab(stagehand, 'about:blank');
+    });
+  }
+
+  private async resolveUserDataDir(): Promise<string> {
+    const config = this.configStore.get();
+    const defaultBase = path.join(os.homedir(), '.clawbrowser', 'workspace');
+    const rawWorkspace = typeof config.workspacePath === 'string' ? config.workspacePath.trim() : '';
+    const preferredBase = rawWorkspace ? path.resolve(rawWorkspace) : defaultBase;
+    const preferredDir = path.join(preferredBase, 'browser-profile', 'default');
+
+    if (await this.ensureDir(preferredDir)) {
+      return preferredDir;
+    }
+
+    if (preferredBase !== defaultBase) {
+      const fallbackDir = path.join(defaultBase, 'browser-profile', 'default');
+      if (await this.ensureDir(fallbackDir)) {
+        const message = `[StagehandBridge] Falling back to default browser profile dir: ${fallbackDir}`;
+        console.error(message);
+        if (this.systemLogger) {
+          this.systemLogger.log('warn', message).catch(() => {
+            // Ignore logging failures.
+          });
+        }
+        return fallbackDir;
+      }
+    }
+
+    const message = `[StagehandBridge] Failed to create browser profile dir; continuing with ${preferredDir}`;
+    console.error(message);
+    if (this.systemLogger) {
+      this.systemLogger.log('error', message).catch(() => {
+        // Ignore logging failures.
+      });
+    }
+    return preferredDir;
+  }
+
+  private async ensureDir(dir: string): Promise<boolean> {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      return true;
+    } catch (err) {
+      const message = `[StagehandBridge] Failed to create browser profile dir ${dir}: ${String(err)}`;
+      console.error(message);
+      if (this.systemLogger) {
+        this.systemLogger.log('error', message).catch(() => {
+          // Ignore logging failures.
+        });
+      }
+      return false;
+    }
   }
 
   private isCrashError(err: Error): boolean {
