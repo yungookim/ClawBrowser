@@ -80,7 +80,7 @@ vi.mock('../../src/agent/SidecarBridge', () => ({
     updateConfig = mocks.sidecarUpdateConfig;
     configureModel = mocks.sidecarConfigureModel;
     onNotification = vi.fn();
-    tabUpdate = vi.fn();
+    tabUpdate = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
