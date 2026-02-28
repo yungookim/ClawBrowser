@@ -510,4 +510,88 @@ describe('AgentCore', () => {
       expect(response.reply).toContain('timeout');
     });
   });
+
+  describe('memory integration', () => {
+    let mockMemoryManager: any;
+
+    beforeEach(() => {
+      mockMemoryManager = {
+        search: vi.fn().mockReturnValue([]),
+        store: vi.fn().mockResolvedValue('mem-id-1'),
+        delete: vi.fn().mockResolvedValue(undefined),
+        list: vi.fn().mockReturnValue([]),
+      };
+      setupMockModel();
+      agentCore.setMemoryManager(mockMemoryManager);
+    });
+
+    it('injects memories into system prompt when search returns results', async () => {
+      mockMemoryManager.search.mockReturnValue([
+        { id: 'a', content: 'User prefers dark mode', title: 'dark mode', score: 1 },
+        { id: 'b', content: 'User wakes at 7am', title: '7am', score: 0.8 },
+      ]);
+
+      await agentCore.query({ userQuery: 'What time should I set my alarm?' });
+
+      const call = getAgentSystemCall();
+      const systemPrompt = call[0][0].content as string;
+      expect(systemPrompt).toContain('## What I remember about you');
+      expect(systemPrompt).toContain('User prefers dark mode');
+      expect(systemPrompt).toContain('User wakes at 7am');
+    });
+
+    it('does not inject memory block when search returns empty', async () => {
+      mockMemoryManager.search.mockReturnValue([]);
+
+      await agentCore.query({ userQuery: 'Hello' });
+
+      const call = getAgentSystemCall();
+      const systemPrompt = call[0][0].content as string;
+      expect(systemPrompt).not.toContain('## What I remember about you');
+    });
+
+    it('executes memory.store tool and returns ok with id', async () => {
+      replyQueue = [
+        { content: '{"tool":"memory.store","params":{"fact":"User prefers bullet points"}}' },
+        { content: 'Got it, I\'ll remember that.' },
+      ];
+
+      const result = await agentCore.query({ userQuery: 'I prefer bullet points' });
+      expect(mockMemoryManager.store).toHaveBeenCalledWith('User prefers bullet points');
+      expect(result.reply).toBe('Got it, I\'ll remember that.');
+    });
+
+    it('executes memory.delete tool and returns ok', async () => {
+      replyQueue = [
+        { content: '{"tool":"memory.delete","params":{"id":"mem-id-1"}}' },
+        { content: 'Forgotten.' },
+      ];
+
+      await agentCore.query({ userQuery: 'Forget my dark mode preference' });
+      expect(mockMemoryManager.delete).toHaveBeenCalledWith('mem-id-1');
+    });
+
+    it('returns error result when memory.store called without fact', async () => {
+      replyQueue = [
+        { content: '{"tool":"memory.store","params":{}}' },
+        { content: 'Could not store.' },
+      ];
+
+      await agentCore.query({ userQuery: 'remember nothing' });
+      const calls = mockInvoke.mock.calls.filter((args: any[]) => isAgentSystemCall(args[0]));
+      const secondCallMessages = calls[1]?.[0] as any[] | undefined;
+      const toolResultMessage = secondCallMessages?.[secondCallMessages.length - 1];
+      expect(toolResultMessage?.content).toContain('"ok":false');
+    });
+
+    it('works without memory manager — no injection, no crash', async () => {
+      agentCore = new AgentCore(modelManager);
+      setupMockModel();
+      const result = await agentCore.query({ userQuery: 'Hello' });
+      expect(result.reply).toBeTruthy();
+      const call = getAgentSystemCall();
+      const systemPrompt = call[0][0].content as string;
+      expect(systemPrompt).not.toContain('## What I remember about you');
+    });
+  });
 });

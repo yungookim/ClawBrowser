@@ -7,6 +7,7 @@ import { AgentDispatcher } from './AgentDispatcher.js';
 import type { StagehandBridge } from '../dom/StagehandBridge.js';
 import { BrowserAutomationRouter, createBrowserAutomationTraceId, type BrowserAutomationContext } from '../dom/BrowserAutomationRouter.js';
 import type { SystemLogger } from '../logging/SystemLogger.js';
+import type { MemoryManager } from '../memory/MemoryManager.js';
 
 const MAX_HISTORY = 40;
 const MAX_TOOL_RESULT_CHARS = 4_000;
@@ -62,6 +63,7 @@ export class AgentCore {
   private stagehandBridge: StagehandBridge | null;
   private systemLogger: SystemLogger | null;
   private browserAutomationRouter: BrowserAutomationRouter | null;
+  private memoryManager: MemoryManager | null = null;
   private history: BaseMessage[] = [];
 
   constructor(
@@ -80,6 +82,11 @@ export class AgentCore {
     this.stagehandBridge = stagehandBridge || null;
     this.systemLogger = systemLogger || null;
     this.browserAutomationRouter = browserAutomationRouter || null;
+  }
+
+  /** Attach a MemoryManager (called after workspace initializes). */
+  setMemoryManager(mm: MemoryManager): void {
+    this.memoryManager = mm;
   }
 
   /** Build the system prompt from workspace files and current context. */
@@ -110,6 +117,16 @@ export class AgentCore {
     }
     if (context.tabCount !== undefined) {
       parts.push(`Open tabs: ${context.tabCount}`);
+    }
+
+    if (this.memoryManager) {
+      const memories = this.memoryManager.search(context.userQuery, 5);
+      if (memories.length > 0) {
+        parts.push('\n## What I remember about you');
+        for (const m of memories) {
+          parts.push(`- ${m.content}`);
+        }
+      }
     }
 
     return parts.join('\n');
@@ -362,6 +379,10 @@ export class AgentCore {
       return this.executeStagehandTool(toolCall);
     }
 
+    if (toolCall.kind === 'agent' && toolCall.capability === 'memory') {
+      return this.executeMemoryTool(toolCall);
+    }
+
     if (!this.dispatcher) {
       return { tool: toolCall.tool, ok: false, error: 'Agent tool dispatcher unavailable.' };
     }
@@ -443,6 +464,31 @@ export class AgentCore {
         default:
           return { tool: toolCall.tool, ok: false, error: `Unknown stagehand action: ${toolCall.action}` };
       }
+    } catch (err) {
+      return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private async executeMemoryTool(
+    toolCall: Extract<ParsedToolCall, { kind: 'agent' }>,
+  ): Promise<{ tool: string; ok: boolean; data?: unknown; error?: string }> {
+    if (!this.memoryManager) {
+      return { tool: toolCall.tool, ok: false, error: 'Memory manager unavailable.' };
+    }
+    try {
+      if (toolCall.action === 'store') {
+        const fact = String(toolCall.params.fact || '');
+        if (!fact) return { tool: toolCall.tool, ok: false, error: 'fact is required' };
+        const id = await this.memoryManager.store(fact);
+        return { tool: toolCall.tool, ok: true, data: { id } };
+      }
+      if (toolCall.action === 'delete') {
+        const id = String(toolCall.params.id || '');
+        if (!id) return { tool: toolCall.tool, ok: false, error: 'id is required' };
+        await this.memoryManager.delete(id);
+        return { tool: toolCall.tool, ok: true, data: { deleted: id } };
+      }
+      return { tool: toolCall.tool, ok: false, error: `Unknown memory action: ${toolCall.action}` };
     } catch (err) {
       return { tool: toolCall.tool, ok: false, error: err instanceof Error ? err.message : String(err) };
     }

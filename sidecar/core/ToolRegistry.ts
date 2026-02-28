@@ -58,6 +58,20 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   { name: 'window.minimize', capability: 'window', action: 'minimize', description: 'Minimize the window.', optional: ['windowId'] },
   { name: 'window.maximize', capability: 'window', action: 'maximize', description: 'Maximize the window.', optional: ['windowId'] },
   { name: 'window.restore', capability: 'window', action: 'restore', description: 'Restore the window.', optional: ['windowId'] },
+  {
+    name: 'memory.store',
+    capability: 'memory',
+    action: 'store',
+    description: 'Persist a preference, fact, or piece of context about the user for future reference. Call this when the user expresses a preference, states a fact about themselves, or asks you to remember something — even implicitly.',
+    required: ['fact'],
+  },
+  {
+    name: 'memory.delete',
+    capability: 'memory',
+    action: 'delete',
+    description: 'Delete a previously stored memory by its ID. Use when the user corrects or retracts something.',
+    required: ['id'],
+  },
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

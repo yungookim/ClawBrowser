@@ -1,0 +1,20 @@
+{
+  "traceId": "8fcada00-e169-4443-934c-e426ad354d4b",
+  "attempts": 12,
+  "successes": 12,
+  "failures": 0,
+  "providers": {
+    "stagehand": {
+      "attempts": 12,
+      "successes": 12,
+      "failures": 0
+    }
+  },
+  "updatedAt": "2026-02-28T02:27:37.618Z",
+  "lastOutcome": {
+    "provider": "stagehand",
+    "ok": true,
+    "action": "extract",
+    "attemptId": "attempt-12"
+  }
+}

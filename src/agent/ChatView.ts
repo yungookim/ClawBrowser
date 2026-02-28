@@ -78,6 +78,14 @@ export class ChatView {
     this.messageList.scrollTop = this.messageList.scrollHeight;
   }
 
+  addMemoryChip(fact: string): void {
+    const chip = document.createElement('div');
+    chip.className = 'chat-memory-chip';
+    chip.textContent = `\u2605 Remembered: "${fact}"`;
+    this.messageList.appendChild(chip);
+    this.messageList.scrollTop = this.messageList.scrollHeight;
+  }
+
   setLoading(loading: boolean): void {
     this.loadingEl.style.display = loading ? 'block' : 'none';
     this.input.disabled = loading;

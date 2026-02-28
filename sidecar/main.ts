@@ -7,6 +7,7 @@ import { WorkspaceFiles } from './memory/WorkspaceFiles.js';
 import { DailyLog } from './memory/DailyLog.js';
 import { SystemLogger, type LogLevel } from './logging/SystemLogger.js';
 import { QmdMemory } from './memory/QmdMemory.js';
+import { MemoryManager } from './memory/MemoryManager.js';
 import { Heartbeat } from './cron/Heartbeat.js';
 import { Reflection } from './cron/Reflection.js';
 import { DomAutomation, type DomAutomationResult } from './dom/DomAutomation.js';
@@ -69,6 +70,7 @@ let workspace: WorkspaceFiles;
 let dailyLog: DailyLog;
 let systemLogger: SystemLogger;
 let qmdMemory: QmdMemory;
+let memoryManager: MemoryManager;
 let heartbeat: Heartbeat;
 let reflection: Reflection;
 let domAutomation: DomAutomation | null = null;
@@ -233,6 +235,19 @@ async function configureWorkspace(workspacePath: string | null): Promise<void> {
   } catch (err) {
     console.error('[sidecar] qmd initialization failed (non-fatal):', err);
   }
+
+  const memoryIndexPath = path.join(workspaceDir, 'memory', 'memories.json');
+  memoryManager = new MemoryManager(
+    qmdMemory,
+    memoryIndexPath,
+    (fact, id) => sendNotification('memoryStored', { fact, id }),
+  );
+  try {
+    await memoryManager.initialize();
+  } catch (err) {
+    console.error('[sidecar] MemoryManager init failed (non-fatal):', err);
+  }
+  agentCore.setMemoryManager(memoryManager);
 
   if (heartbeat) {
     heartbeat.stop();
@@ -439,6 +454,17 @@ function registerHandlers(): void {
     }
 
     return { files, memories };
+  });
+
+  handlers.set('listMemories', async () => {
+    return { memories: memoryManager.list() };
+  });
+
+  handlers.set('deleteMemory', async (params) => {
+    const id = params.id as string;
+    if (!id || typeof id !== 'string') throw new Error('id is required');
+    await memoryManager.delete(id);
+    return { ok: true };
   });
 
   handlers.set('listModels', async () => {

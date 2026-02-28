@@ -1,10 +1,12 @@
 import { ChatView } from './ChatView';
+import { MemoryPanel } from './MemoryPanel';
 import { SidecarBridge } from './SidecarBridge';
 import { TabManager } from '../tabs/TabManager';
 
 export class AgentPanel {
   private container: HTMLElement;
   private chatView: ChatView;
+  private memoryPanel: MemoryPanel;
   private bridge: SidecarBridge;
   private tabManager: TabManager;
 
@@ -15,6 +17,23 @@ export class AgentPanel {
 
     this.chatView = new ChatView(container);
     this.chatView.setOnSend((message) => this.handleUserMessage(message));
+
+    // Header with memory toggle above the chat view
+    const panelHeader = document.createElement('div');
+    panelHeader.className = 'agent-panel-header';
+
+    const memoryBtn = document.createElement('button');
+    memoryBtn.className = 'agent-panel-memory-btn';
+    memoryBtn.textContent = '\u2605 Memory';
+    memoryBtn.title = 'Toggle memory panel';
+    panelHeader.appendChild(memoryBtn);
+    this.container.insertBefore(panelHeader, this.container.firstChild);
+
+    const memoryContainer = document.createElement('div');
+    this.container.insertBefore(memoryContainer, panelHeader.nextSibling);
+    this.memoryPanel = new MemoryPanel(memoryContainer, this.bridge);
+
+    memoryBtn.addEventListener('click', () => this.memoryPanel.toggle());
 
     // Listen for sidecar notifications
     this.bridge.onNotification((method, params) => {
@@ -45,6 +64,9 @@ export class AgentPanel {
         this.chatView.replacePlan(newPlan.slice(replaceFrom), replaceFrom);
       } else if (method === 'swarmComplete') {
         // Final result comes via the agentQuery response, nothing special needed here
+      } else if (method === 'memoryStored') {
+        const { fact } = params as { fact: string; id: string };
+        this.chatView.addMemoryChip(fact);
       } else if (method === 'swarmRecoveryAttempted') {
         const { operation, error, attempt, maxRetries } = params as {
           operation: string;
